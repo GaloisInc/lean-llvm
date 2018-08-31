@@ -4,407 +4,398 @@ import data.rbmap
 
 namespace llvm
 
+-- FIXME
+def float : Type 0 := sorry
+def double : Type 0 := sorry
+
 -- Identifiers -----------------------------------------------------------------
 
-structure Ident := string
+structure ident := string
 
 -- Data Layout -----------------------------------------------------------------
 
-inductive AlignType : Type 0
-  | IntegerAlign : AlignType 
-  | VectorAlign : AlignType
-  | FloatAlign  : AlignType
-  | AggregateAlign : AlignType
+inductive align_type
+  | integer : align_type 
+  | vector : align_type
+  | float  : align_type
+  | aggregate : align_type
 
-inductive Mangling 
-  | ElfMangling
-  | MipsMangling
-  | MachOMangling
-  | WindowsCoffMangling
-  | WindowsCoffX86Mangling
+inductive mangling 
+  | elf
+  | mips
+  | mach_o
+  | windows_coff
+  | windows_coff_x86
 
 -- The labels are mainly for documentation, taken from parseSpecifier
-inductive LayoutSpec
-  | BigEndian                                : LayoutSpec  
-  | LittleEndian                             : LayoutSpec  
-  | PointerSize   (address_space : nat)
+inductive layout_spec
+  | big_endian                                : layout_spec  
+  | little_endian                             : layout_spec  
+  | pointer_size  (address_space : nat)
                   (abi_align : nat)
                   (pref_align : option nat )
                   (mem_size : nat)
-                  (index_size : nat)         : LayoutSpec 
-  | AlignSize     (align_type : AlignType) (size : nat) (abi_align : nat) (pref_align : option nat) : LayoutSpec
-  | NativeIntSize (legal_widths : list nat)     : LayoutSpec  
-  | StackAlign    : nat -> LayoutSpec  -- ^ size, abi, pref
-  | FunctionAddresSpace : nat -> LayoutSpec
-  | StackAlloca  : nat -> LayoutSpec
-  | Mangling : Mangling -> LayoutSpec  
+                  (index_size : nat)         : layout_spec 
+  | align_size    (align_type : align_type) (size : nat)
+                  (abi_align : nat) (pref_align : option nat) : layout_spec
+  | native_int_size (legal_widths : list nat)     : layout_spec  
+  | stack_align    : nat -> layout_spec  -- ^ size, abi, pref
+  | function_addres_space : nat -> layout_spec
+  | stack_alloca  : nat -> layout_spec
+  | mangling : mangling -> layout_spec  
 
-def DataLayout := list LayoutSpec
+def data_layout := list layout_spec
 
 -- Types -----------------------------------------------------------------------
 
-inductive FloatType
-  | Half
-  | Float
-  | Double
-  | Fp128
-  | X86_fp80
-  | PPC_fp128
+inductive float_type
+  | half
+  | float
+  | double
+  | fp128
+  | x86_fp80
+  | ppc_fp128
 
-inductive PrimType
-  | Label
-  | Void
-  | Integer : nat -> PrimType
-  | FloatType : FloatType -> PrimType
-  | X86mmx
-  | Metadata
+inductive prim_type
+  | label
+  | void
+  | integer : nat -> prim_type
+  | float_type : float_type -> prim_type
+  | x86mmx
+  | metadata
 
-inductive LLVMType
-  | PrimType : PrimType -> LLVMType 
-  | Alias : Ident -> LLVMType 
-  | Array : nat -> LLVMType -> LLVMType 
-  | FunTy : LLVMType -> list LLVMType -> bool -> LLVMType 
-  | PtrTo : LLVMType -> LLVMType 
-  | Struct : list LLVMType -> LLVMType 
-  | PackedStruct : list LLVMType -> LLVMType 
-  | Vector : nat -> LLVMType -> LLVMType 
-  | Opaque : LLVMType
+inductive llvm_type
+  | prim_type : prim_type -> llvm_type 
+  | alias : ident -> llvm_type 
+  | array : nat -> llvm_type -> llvm_type 
+  | fun_ty : llvm_type -> list llvm_type -> bool -> llvm_type 
+  | ptr_to : llvm_type -> llvm_type 
+  | struct : list llvm_type -> llvm_type 
+  | packed_struct : list llvm_type -> llvm_type 
+  | vector : nat -> llvm_type -> llvm_type 
+  | opaque : llvm_type
 
 -- Top-level Type Aliases ------------------------------------------------------
 
-structure TypeDecl := 
-  (typeName : Ident)
-  (typeValue : LLVMType)
+structure type_decl := 
+  (name : ident)
+  (value : llvm_type)
 
 -- Symbols ---------------------------------------------------------------------
 
-structure Symbol := string
+structure symbol := string
 
-inductive BlockLabel
-  | Named : Ident -> BlockLabel
-  | Anon : nat -> BlockLabel
+inductive block_label
+  | named : ident -> block_label
+  | anon : nat -> block_label
 
-structure Typed (a : Type _):= 
-  ( type  : LLVMType)
-  ( value : a)
+structure typed (a : Type):= 
+  ( type  : llvm_type )
+  ( value : a )
 
 -- Instructions ----------------------------------------------------------------
 
-inductive ArithOp
-  | Add (uoverflow : bool) (soverflow : bool) : ArithOp
-  | FAdd : ArithOp
-  | Sub (uoverflow : bool) (soverflow : bool) : ArithOp
-  | FSub : ArithOp
-  | Mul (uoverflow : bool) (soverflow : bool) : ArithOp
-  | FMul : ArithOp
-  | UDiv (exact : bool) :ArithOp
-  | SDiv (exact : bool) : ArithOp
-  | FDiv : ArithOp
-  | URem : ArithOp
-  | SRem : ArithOp
-  | FRem : ArithOp
+inductive arith_op
+  | add (uoverflow : bool) (soverflow : bool) : arith_op
+  | fadd : arith_op
+  | sub (uoverflow : bool) (soverflow : bool) : arith_op
+  | fsub : arith_op
+  | mul (uoverflow : bool) (soverflow : bool) : arith_op
+  | fmul : arith_op
+  | udiv (exact : bool) : arith_op
+  | sdiv (exact : bool) : arith_op
+  | fdiv : arith_op
+  | urem : arith_op
+  | srem : arith_op
+  | frem : arith_op
 
--- | Binary bitwise operators.
-inductive BitOp
-  | Shl (uoverflow : bool) (soverflow : bool) : BitOp
-  | Lshr (exact : bool) : BitOp
-  | Ashr (exact : bool) : BitOp
-  | And
-  | Or
-  | Xor
+-- | binary bitwise operators.
+inductive bit_op
+  | shl (uoverflow : bool) (soverflow : bool) : bit_op
+  | lshr (exact : bool) : bit_op
+  | ashr (exact : bool) : bit_op
+  | and
+  | or
+  | xor
 
 -- | Conversions from one type to another.
-inductive ConvOp
-  | Trunc
-  | ZExt
-  | SExt
-  | FpTrunc
-  | FpExt
-  | FpToUi
-  | FpToSi
-  | UiToFp
-  | SiToFp
-  | PtrToInt
-  | IntToPtr
-  | BitCast
+inductive conv_op
+  | trunc
+  | zext
+  | sext
+  | fp_trunc
+  | fp_ext
+  | fp_to_ui
+  | fp_to_si
+  | ui_to_fp
+  | si_to_fp
+  | ptr_to_int
+  | int_to_ptr
+  | bit_cast
 
-inductive AtomicRWOp
-  | AtomicXchg
-  | AtomicAdd
-  | AtomicSub
-  | AtomicAnd
-  | AtomicNand
-  | AtomicOr
-  | AtomicXor
-  | AtomicMax
-  | AtomicMin
-  | AtomicUMax
-  | AcomicUMin
+inductive atomic_rw_op
+  | xchg
+  | add
+  | sub
+  | and
+  | nand
+  | or
+  | xor
+  | max
+  | min
+  | u_max
+  | u_min
 
-inductive AtomicOrdering
-  | Unordered
-  | Monotonic
-  | Acquire
-  | Release
-  | AcqRel
-  | SeqCst
+inductive atomic_ordering
+  | unordered
+  | monotonic
+  | acquire
+  | release
+  | acq_rel
+  | seq_cst
 
 -- | Integer comparison operators.
-inductive ICmpOp 
-  | Ieq | Ine | Iugt | Iuge | Iult | Iule | Isgt | Isge | Islt | Isle
+inductive icmp_op 
+  | ieq | ine | iugt | iuge | iult | iule | isgt | isge | islt | isle
 
 -- | Floating-point comparison operators.
-inductive FCmpOp 
-  | Ffalse  | Foeq | Fogt | Foge | Folt | Fole | Fone
-  | Ford    | Fueq | Fugt | Fuge | Fult | Fule | Fune
-  | Funo    | Ftrue
+inductive fcmp_op 
+  | ffalse  | foeq | fogt | foge | folt | fole | fone
+  | ford    | fueq | fugt | fuge | fult | fule | fune
+  | funo    | ftrue
 
 -- Values ----------------------------------------------------------------------
+
+
+inductive val_md' (v : Type) : Type
+  | string : string -> val_md'
+  | value : typed v -> val_md'
+  | ref : nat -> val_md'
+  | node : option val_md' -> val_md'
+--  | md_loc : debug_loc v -> val_md
+--  | val_md_debug_info (debug_info' lab)
+
+-- structure debug_loc v := 
+--   ( line  : nat )
+--   ( col   : nat )
+--   ( scope : val_md v )
+--   ( IA    : option (val_md v) )
+
+inductive clause
+  | catch 
+  | filter
 
 -- sjw: ConstExpr has been removed, and replaced by the corresponding
 -- Instr -- we can use ConstantExpr::getAsInstruction().  This means
 -- we lose some info (not all Instrs are ConstantExprs), but it
 -- simplifies the AST.
-mutual inductive Value, ValMd, Instruction, Clause
-with Value : Type
-  | ValInteger : int -> Value
-  | ValBool : bool -> Value
---  | ValFloat Float
---  | ValDouble Double
-  | ValIdent : Ident -> Value
-  | ValSymbol : Symbol -> Value
-  | ValNull
-  | ValArray : LLVMType -> list Value -> Value
-  | ValVector : LLVMType -> list Value -> Value
-  | ValStruct : list (Typed Value) -> Value
-  | ValPackedStruct : list (Typed Value) -> Value
-  | ValString : string -> Value -- list Word8?
-  | ValConstExpr : Instruction /- ConstExpr -/ -> Value
-  | ValUndef
-  | ValLabel : BlockLabel -> Value
-  | ValZeroInit
-  | ValAsm : bool -> bool -> string -> string -> Value
-  | ValMd : ValMd -> Value
-with ValMd : Type
-  | ValMdString : string -> ValMd
-  | ValMdValue : Typed Value -> ValMd
-  | ValMdRef : nat -> ValMd
-  | ValMdNode : option ValMd -> ValMd
---  | ValMdLoc (DebugLoc' lab)
---  | ValMdDebugInfo (DebugInfo' lab)
-with Instruction : Type
-  | Ret : Typed Value -> Instruction
-  | RetVoid
-  | Arith : ArithOp -> Typed Value -> Value -> Instruction
-  | Bit : BitOp -> Typed Value -> Value -> Instruction
-  | Conv : ConvOp -> Typed Value -> LLVMType -> Instruction
-  | Call : LLVMType -> Value -> list (Typed Value) -> Instruction
-  | Alloca : LLVMType -> option (Typed Value) -> option nat -> Instruction
-  | Load : Typed Value -> option AtomicOrdering -> option nat /- align -/ -> Instruction
-  | Store : Typed Value -> Typed Value -> option nat /- align -/ -> Instruction
-  | Fence : option string -> AtomicOrdering -> Instruction
-  | CmpXchg (weak : bool) (volatile : bool) : Typed Value -> Typed Value -> Typed Value 
-            -> option string -> AtomicOrdering -> AtomicOrdering -> Instruction
-  | AtomicRW (volatile : bool) : AtomicRWOp -> Typed Value -> Typed Value
-            -> option string -> AtomicOrdering -> Instruction
-  | ICmp : ICmpOp -> Typed Value -> Value -> Instruction
-  | FCmp : FCmpOp -> Typed Value -> Value -> Instruction
-  | Phi : LLVMType -> list (Value × BlockLabel) -> Instruction
-  | GEP (bounds : bool) : Typed Value -> list (Typed Value) -> Instruction
-  | Select : Typed Value -> Typed Value -> Value -> Instruction
-  | ExtractValue : Typed Value -> list nat -> Instruction
-  | InsertValue : Typed Value -> Typed Value -> list nat -> Instruction
-  | ExtractElt : Typed Value -> Value -> Instruction
-  | InsertElt : Typed Value -> Typed Value -> Value -> Instruction
-  | ShuffleVector : Typed Value -> Value -> Typed Value -> Instruction
-  | Jump : BlockLabel -> Instruction
-  | Br : Typed Value -> BlockLabel -> BlockLabel -> Instruction
-  | Invoke : LLVMType -> Value -> list (Typed Value) -> BlockLabel -> BlockLabel -> Instruction
-  | Comment : string -> Instruction
-  | Unreachable
-  | Unwind
-  | VaArg : Typed Value -> LLVMType -> Instruction
-  | IndirectBr : Typed Value -> list BlockLabel -> Instruction
-  | Switch : Typed Value -> BlockLabel -> list (nat × BlockLabel) -> Instruction
-  | LandingPad : LLVMType -> option (Typed Value) -> bool -> list Clause -> Instruction
-  | Resume : Typed Value -> Instruction
-with Clause : Type
-  | Catch : Typed Value -> Clause
-  | Filter : Typed Value -> Clause
+mutual inductive value, const_expr
+with value : Type
+  | integer : int -> value
+  | bool : bool -> value
+  | float : float -> value
+  | double : double -> value
+  | ident : ident -> value
+  | symbol : symbol -> value
+  | null
+  | array : llvm_type -> list value -> value
+  | vector : llvm_type -> list value -> value
+  | struct : list (typed value) -> value
+  | packed_struct : list (typed value) -> value
+  | string : string -> value -- list word8?
+  | const_expr : const_expr -> value
+  | undef
+  | label : block_label -> value
+  | zero_init
+  | asm : bool -> bool -> string -> string -> value
+  | md : val_md' value -> value
+with const_expr : Type
+  | gep : bool -> option nat -> option llvm_type -> list (typed value) -> const_expr
+  | conv : conv_op -> typed value -> llvm_type -> const_expr
+  | select : typed value -> typed value -> typed value -> const_expr
+  | block_addr : symbol -> block_label -> const_expr
+  | fcmp : fcmp_op -> typed value -> typed value -> const_expr
+  | icmp : icmp_op -> typed value -> typed value -> const_expr
+  | arith : arith_op -> typed value -> value -> const_expr
+  | bit : bit_op -> typed value -> value -> const_expr
 
-/-
-type ValMd = ValMd' BlockLabel
--/
+def val_md := val_md' value
 
-/-
-type KindMd = String
-type FnMdAttachments = Map.Map KindMd ValMd
-type GlobalMdAttachments = Map.Map KindMd ValMd
+inductive instruction : Type
+  | ret : typed value -> instruction
+  | ret_void
+  | arith : arith_op -> typed value -> value -> instruction
+  | bit : bit_op -> typed value -> value -> instruction
+  | conv : conv_op -> typed value -> llvm_type -> instruction
+  | call : llvm_type -> value -> list (typed value) -> instruction
+  | alloca : llvm_type -> option (typed value) -> option nat -> instruction
+  | load : typed value -> option atomic_ordering -> option nat /- align -/ -> instruction
+  | store : typed value -> typed value -> option nat /- align -/ -> instruction
+  | fence : option string -> atomic_ordering -> instruction
+  | cmp_xchg (weak : bool) (volatile : bool) : typed value -> typed value -> typed value 
+            -> option string -> atomic_ordering -> atomic_ordering -> instruction
+  | atomic_rw (volatile : bool) : atomic_rw_op -> typed value -> typed value
+            -> option string -> atomic_ordering -> instruction
+  | icmp : icmp_op -> typed value -> value -> instruction
+  | fcmp : fcmp_op -> typed value -> value -> instruction
+  | phi : llvm_type -> list (value × block_label) -> instruction
+  | gep (bounds : bool) : typed value -> list (typed value) -> instruction
+  | select : typed value -> typed value -> value -> instruction
+  | extract_value : typed value -> list nat -> instruction
+  | insert_value : typed value -> typed value -> list nat -> instruction
+  | extract_elt : typed value -> value -> instruction
+  | insert_elt : typed value -> typed value -> value -> instruction
+  | shuffle_vector : typed value -> value -> typed value -> instruction
+  | jump : block_label -> instruction
+  | br : typed value -> block_label -> block_label -> instruction
+  | invoke : llvm_type -> value -> list (typed value) -> block_label -> block_label -> instruction
+  | comment : string -> instruction
+  | unreachable
+  | unwind
+  | va_arg : typed value -> llvm_type -> instruction
+  | indirect_br : typed value -> list block_label -> instruction
+  | switch : typed value -> block_label -> list (nat × block_label) -> instruction
+  | landing_pad : llvm_type -> option (typed value) -> bool -> list (clause × typed value) -> instruction
+  | resume : typed value -> instruction
 
-data DebugLoc' lab = DebugLoc
-  { dlLine  :: Word32
-  , dlCol   :: Word32
-  , dlScope :: ValMd' lab
-  , dlIA    :: Maybe (ValMd' lab)
-  } deriving (Show,Functor,Generic,Generic1)
-
-type DebugLoc = DebugLoc' BlockLabel
-
--/
 -- Named Metadata --------------------------------------------------------------
 
-structure NamedMd := 
-  ( nmName   : string)
-  ( nmValues : list nat)
+structure named_md := 
+  ( name   : string)
+  ( values : list nat)
 
 -- Unnamed Metadata ------------------------------------------------------------
 
-structure UnnamedMd :=
-  ( umIndex  : nat)
-  ( umValues : ValMd)
-  ( umDistinct : bool)
+structure unnamed_md :=
+  ( index  : nat)
+  ( values : val_md)
+  ( distinct : bool)
 
 -- Comdat ----------------------------------------------------------------------
 
-inductive SelectionKind
-  | ComdatAny
-  | ComdatExactMatch
-  | ComdatLargest
-  | ComdatNoDuplicates
-  | ComdatSameSize
+inductive selection_kind
+  | any
+  | exact_match
+  | largest
+  | no_duplicates
+  | same_size
 
-inductive Linkage
-  | Private
-  | LinkerPrivate
-  | LinkerPrivateWeak
-  | LinkerPrivateWeakDefAuto
-  | Internal
-  | AvailableExternally
-  | Linkonce
-  | Weak
-  | Common
-  | Appending
-  | ExternWeak
-  | LinkonceODR
-  | WeakODR
-  | External
-  | DLLImport
-  | DLLExport
+inductive linkage
+  | private_linkage
+  | linker_private
+  | linker_private_weak
+  | linker_private_weak_def_auto
+  | internal
+  | available_externally
+  | linkonce
+  | weak
+  | common
+  | appending
+  | extern_weak
+  | linkonce_odr
+  | weak_odr
+  | external
+  | dll_import
+  | dll_export
 
-inductive Visibility 
-  | DefaultVisibility
-  | HiddenVisibility
-  | ProtectedVisibility
+inductive visibility 
+  | default
+  | hidden
+  | protected_visibility
 
-structure GlobalAttrs :=
-  ( gaLinkage    : option Linkage    ) 
-  ( gaVisibility : option Visibility ) 
-  ( gaConstant   : bool              ) 
+structure global_attrs :=
+  ( linkage    : option linkage    ) 
+  ( visibility : option visibility ) 
+  ( const      : bool              ) 
 
-structure Global :=
-  ( globalSym   : Symbol                  )
-  ( globalAttrs : GlobalAttrs             )
-  ( globalType  : LLVMType                )
-  ( globalValue : option Value            )
-  ( globalAlign : option nat              )
-  ( globalMetadata : rbmap string ValMd   )
+structure global :=
+  ( sym   : symbol                  )
+  ( attrs : global_attrs             )
+  ( type  : llvm_type                )
+  ( value : option value            )
+  ( align : option nat              )
+  ( metadata : rbmap string val_md )
 
-inductive FunAttr
-   | AlignStack : nat -> FunAttr
-   | Alwaysinline
-   | Builtin
-   | Cold
-   | Inlinehint
-   | Jumptable
-   | Minsize
-   | Naked
-   | Nobuiltin
-   | Noduplicate
-   | Noimplicitfloat
-   | Noinline
-   | Nonlazybind
-   | Noredzone
-   | Noreturn
-   | Nounwind
-   | Optnone
-   | Optsize
-   | Readnone
-   | Readonly
-   | ReturnsTwice
-   | SanitizeAddress
-   | SanitizeMemory
-   | SanitizeThread
-   | SSP
-   | SSPreq
-   | SSPstrong
-   | UWTable
+inductive fun_attr
+   | align_stack : nat -> fun_attr
+   | alwaysinline
+   | builtin
+   | cold
+   | inlinehint
+   | jumptable
+   | minsize
+   | naked
+   | nobuiltin
+   | noduplicate
+   | noimplicitfloat
+   | noinline
+   | nonlazybind
+   | noredzone
+   | noreturn
+   | nounwind
+   | optnone
+   | optsize
+   | readnone
+   | readonly
+   | returns_twice
+   | sanitize_address
+   | sanitize_memory
+   | sanitize_thread
+   | ssp
+   | ss_preq
+   | ss_pstrong
+   | uw_table
 
-structure Declare :=
-  ( decRetType : LLVMType      )
-  ( decName    : Symbol        )
-  ( decArgs    : list LLVMType )
-  ( decVarArgs : bool          )
-  ( decAttrs   : list FunAttr  )
-  ( decComdat  : option string )
+structure declare :=
+  ( ret_type : llvm_type      )
+  ( name    : symbol        )
+  ( args    : list llvm_type )
+  ( var_args : bool          )
+  ( attrs   : list fun_attr  )
+  ( comdat  : option string )
 
 structure GC := string
 
-structure Stmt :=
-  (assign : option Ident) 
-  (instr : Instruction)
-  (metadata : (list (string × ValMd)))
+structure stmt :=
+  (assign : option ident) 
+  (instr : instruction)
+  (metadata : (list (string × val_md)))
 
-structure BasicBlock :=
-  ( bbLabel : option BlockLabel )
-  ( bbStmts : list Stmt )
+structure basic_block :=
+  ( label : option block_label )
+  ( stmts : list stmt )
 
-structure Define :=
-  ( defLinkage  : option Linkage  ) 
-  ( defRetType  : LLVMType       ) 
-  ( defName     : Symbol         ) 
-  ( defArgs     : list (Typed Ident)  ) 
-  ( defVarArgs  : bool           ) 
-  ( defAttrs    : list FunAttr   ) 
-  ( defSection  : option string  ) 
-  ( defGC       : option GC      ) 
-  ( defBody     : list BasicBlock) 
-  ( defMetadata : rbmap string ValMd) 
-  ( defComdat   : option string   ) 
+structure define :=
+  ( linkage  : option linkage  ) 
+  ( ret_type  : llvm_type       ) 
+  ( name     : symbol         ) 
+  ( args     : list (typed ident)  ) 
+  ( var_args  : bool           ) 
+  ( attrs    : list fun_attr   ) 
+  ( sec      : option string  ) 
+  ( gc       : option GC      ) 
+  ( body     : list basic_block) 
+  ( metadata : rbmap string val_md) 
+  ( comdat   : option string   ) 
 
-structure GlobalAlias :=
-  ( aliasName   : Symbol   ) 
-  ( aliasType   : LLVMType ) 
-  ( aliasTarget : Value    ) 
+structure global_alias :=
+  ( name   : symbol   ) 
+  ( type   : llvm_type ) 
+  ( target : value    ) 
 
-/-
 -- Modules ---------------------------------------------------------------------
-
-data Module = Module
-  { modSourceName :: Maybe String
-  , modDataLayout :: DataLayout    -- ^ type size and alignment information
-  , modTypes      :: [TypeDecl]    -- ^ top-level type aliases
-  , modNamedMd    :: [NamedMd]
-  , modUnnamedMd  :: [UnnamedMd]
-  , modComdat     :: Map.Map String SelectionKind
-  , modGlobals    :: [Global]      -- ^ global value declarations
-  , modDeclares   :: [Declare]     -- ^ external function declarations (without definitions)
-  , modDefines    :: [Define]      -- ^ internal function declarations (with definitions)
-  , modInlineAsm  :: InlineAsm
-  , modAliases    :: [GlobalAlias]
-  } deriving (Show,Generic)
--/
-structure Module := 
-  ( sourceName : option string  )
-  ( dataLayout : DataLayout    ) -- ^ type size and alignment information
-  ( types      : list TypeDecl    ) -- ^ top-level type aliases
-  ( namedMd    : list NamedMd     )
-  ( unnamedMd  : list UnnamedMd   )
-  ( comdat     : rbmap string SelectionKind)
-  ( globals    : list Global   ) -- ^ global value declarations
-  ( declares   : list Declare  ) -- ^ external function declarations (without definitions)
-  ( defines    : list Define   ) -- ^ internal function declarations (with definitions)
-  ( inlineAsm  : list string   )
-  ( aliases    : list GlobalAlias )
+structure module := 
+  ( source_name : option string  )
+  ( data_layout : data_layout    ) -- ^ type size and alignment information
+  ( types      : list type_decl    ) -- ^ top-level type aliases
+  ( named_md    : list named_md     )
+  ( unnamed_md  : list unnamed_md   )
+  ( comdat     : rbmap string selection_kind)
+  ( globals    : list global   ) -- ^ global value declarations
+  ( declares   : list declare  ) -- ^ external function declarations (without definitions)
+  ( defines    : list define   ) -- ^ internal function declarations (with definitions)
+  ( inline_asm  : list string   )
+  ( aliases    : list global_alias )
 
 -- DWARF Debug Info ------------------------------------------------------------
 /-
