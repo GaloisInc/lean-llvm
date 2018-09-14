@@ -185,10 +185,7 @@ inductive clause
   | catch 
   | filter
 
--- sjw: ConstExpr has been removed, and replaced by the corresponding
--- Instr -- we can use ConstantExpr::getAsInstruction().  This means
--- we lose some info (not all Instrs are ConstantExprs), but it
--- simplifies the AST.
+-- value here does not correspond exactly with LLVM::Value
 mutual inductive value, const_expr
 with value : Type
   | integer : int -> value

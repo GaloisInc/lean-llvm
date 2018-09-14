@@ -1,0 +1,26 @@
+
+namespace translate 
+
+llvm_type : llvm_type_ref -> llvm_type 
+
+typed : (value_ptr -> a) -> value_ptr -> typed a
+typed ptr f = llvm.typed.mk (llvm_type ptr) (f ptr)
+
+value : value_ptr -> value
+
+overflow_value :  (bool -> bool -> a) -> value_ptr -> a
+
+operand : nat -> value_ptr -> value
+operand n ptr = LLVMGetOperand(ptr, n)
+
+-- value_ptr is an instruction
+instruction : value_ptr -> instruction
+instruction ptr =
+  case LLVMGetInstructionOpcode(ptr) of
+      ...
+      8 /- LLVMAdd -/ -> arith (overflow_value add ptr)
+                                                (typed (operand 0))
+                                                (operand 1 ptr)
+      ...
+      
+end
