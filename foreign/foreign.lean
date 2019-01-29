@@ -42,7 +42,10 @@ def ptr.elem_inc {α:Type} [storable α] (p:ptr α) : ptr α := p.byte_add (mems
 noncomputable
 def ptr.elem_dec {α:Type} [storable α] (p:ptr α) : ptr α := p.byte_add (int.neg (memsize α))
 
-/-- Allocate a pointer wot hte given number of bytes and free it when done. -/
+/--
+Allocate the given number of bytes, pass a pointer to it to the
+function, and free it when done.
+-/
 constant alloca_bytes {α} {β} (sz:ℕ) (f : ptr α → io β) : io β
 
 /-- Allocate a pointer to a value and free it when done. -/
