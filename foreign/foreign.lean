@@ -42,32 +42,40 @@ def ptr.elem_inc {α:Type} [storable α] (p:ptr α) : ptr α := p.byte_add (mems
 noncomputable
 def ptr.elem_dec {α:Type} [storable α] (p:ptr α) : ptr α := p.byte_add (int.neg (memsize α))
 
-/-- Allocate a pointer wot hte given number of bytes and free it when done. -/
-constant alloca_bytes {α} {̱{β} (sz:ℕ) (f : ptr α → io β) : io β
+/--
+Allocate the given number of bytes, pass a pointer to it to the
+function, and free it when done.
+-/
+constant alloca_bytes {α} {β} (sz:ℕ) (f : ptr α → io β) : io β
 
 /-- Allocate a pointer to a value and free it when done. -/
-def alloca {α} {̱{β} [h:storable α] (f : ptr α → io β) : io β :=
+noncomputable
+def alloca {α} {β} [h:storable α] (f : ptr α → io β) : io β :=
   alloca_bytes (memsize α) f
 
 /-- Allocate a pointer to an array of values and free it when done. -/
-def alloca_array {α} {̱{β} [h:storable α] (n:ℕ) (f : ptr α → io β) : io β :=
+noncomputable
+def alloca_array {α} {β} [h:storable α] (n:ℕ) (f : ptr α → io β) : io β :=
   alloca_bytes (n * memsize α) f
 
 /-- Convert an array of the given length into a list of values. -/
-def peek_array.imp {α} {̱[h:storable α] : ℕ → ptr α → list α → io (list α)
+noncomputable
+def peek_array.imp {α} [h:storable α] : ℕ → ptr α → list α → io (list α)
 | 0 p l := pure l
-| (succ n) p l :=
+| (nat.succ n) p l := do
   h ← peek (ptr.elem_dec p),
   peek_array.imp n (ptr.elem_dec p) (h::l)
 
 /-- Read elements out of an array of the given length, and return list. -/
-def peek_list {α} {̱[h:storable α] (n:ℕ) (p : ptr α) : io (list α) :=
-  peek_array.imp n (p.elem_add n)
+noncomputable
+def peek_list {α} [h:storable α] (n:ℕ) (p : ptr α) : io (list α) :=
+  peek_array.imp n (p.elem_add n) []
 
 /-- Convert an array of the given length into a list of values. -/
-def poke_list {α} {̱[h:storable α] : ptr α → list α → io unit
+noncomputable
+def poke_list {α} [h:storable α] : ptr α → list α → io unit
 | p [] := pure ()
-| p (h::r) := poke p h, poke_list p.elem_inc r
+| p (h::r) := do poke p h, poke_list p.elem_inc r
 
 -- C-specific types
 
