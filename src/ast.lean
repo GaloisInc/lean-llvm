@@ -10,7 +10,7 @@ def double : Type 0 := sorry
 
 -- Identifiers -----------------------------------------------------------------
 
-structure ident := string
+structure ident := (ident : string)
 
 -- Data Layout -----------------------------------------------------------------
 
@@ -32,17 +32,18 @@ inductive layout_spec
   | big_endian                                : layout_spec  
   | little_endian                             : layout_spec  
   | pointer_size  (address_space : nat)
+                  (size : nat)
                   (abi_align : nat)
-                  (pref_align : option nat )
-                  (mem_size : nat)
+                  (pref_align : option nat)
                   (index_size : nat)         : layout_spec 
   | align_size    (align_type : align_type) (size : nat)
                   (abi_align : nat) (pref_align : option nat) : layout_spec
   | native_int_size (legal_widths : list nat)     : layout_spec  
-  | stack_align    : nat -> layout_spec  -- ^ size, abi, pref
-  | function_addres_space : nat -> layout_spec
+  | stack_align    : nat -> layout_spec
+  | function_address_space : nat -> layout_spec
   | stack_alloca  : nat -> layout_spec
   | mangling : mangling -> layout_spec  
+.
 
 def data_layout := list layout_spec
 
@@ -83,7 +84,7 @@ structure type_decl :=
 
 -- Symbols ---------------------------------------------------------------------
 
-structure symbol := string
+structure symbol := (symbol : string)
 
 inductive block_label
   | named : ident -> block_label
@@ -92,6 +93,14 @@ inductive block_label
 structure typed (a : Type):= 
   ( type  : llvm_type )
   ( value : a )
+
+namespace llvm.typed
+lemma sizeof_spec' (a:Type) [has_sizeof a] (x:typed a) :
+  typed.sizeof a x = 1 + sizeof (x.type) + sizeof (x.value) :=
+begin
+  cases x, unfold typed.sizeof
+end
+end llvm.typed
 
 -- Instructions ----------------------------------------------------------------
 
@@ -185,38 +194,44 @@ inductive clause
   | catch 
   | filter
 
+
 -- value here does not correspond exactly with LLVM::Value
 mutual inductive value, const_expr
 with value : Type
-  | integer : int -> value
+  | integer : ℤ -> value
   | bool : bool -> value
-  | float : float -> value
-  | double : double -> value
+--  | float : float -> value
+--  | double : double -> value
   | ident : ident -> value
+  | const_expr : const_expr -> value
   | symbol : symbol -> value
-  | null
+  | null  : value
   | array : llvm_type -> list value -> value
   | vector : llvm_type -> list value -> value
   | struct : list (typed value) -> value
   | packed_struct : list (typed value) -> value
-  | string : string -> value -- list word8?
-  | const_expr : const_expr -> value
-  | undef
-  | label : block_label -> value
-  | zero_init
-  | asm : bool -> bool -> string -> string -> value
-  | md : val_md' value -> value
-with const_expr : Type
-  | gep : bool -> option nat -> option llvm_type -> list (typed value) -> const_expr
-  | conv : conv_op -> typed value -> llvm_type -> const_expr
-  | select : typed value -> typed value -> typed value -> const_expr
-  | block_addr : symbol -> block_label -> const_expr
-  | fcmp : fcmp_op -> typed value -> typed value -> const_expr
-  | icmp : icmp_op -> typed value -> typed value -> const_expr
-  | arith : arith_op -> typed value -> value -> const_expr
-  | bit : bit_op -> typed value -> value -> const_expr
+  -- | string : string -> value -- list word8?
 
-def val_md := val_md' value
+  | undef : value
+  | label : block_label -> value
+  | zero_init : value
+  -- | asm : bool -> bool -> string -> string -> value
+  -- | md : val_md' value -> value
+
+with const_expr : Type
+  | select : typed value -> typed value -> typed value -> const_expr
+  | gep : bool -> option nat -> llvm_type -> list (typed value) -> const_expr
+  | conv : conv_op -> typed value -> llvm_type -> const_expr
+  -- | block_addr : symbol -> block_label -> expr const
+  -- | fcmp : fcmp_op -> typed (expr val) -> typed (expr val) -> expr const
+  -- | icmp : icmp_op -> typed (expr val) -> typed (expr val) -> expr const
+  -- | arith : arith_op -> typed (expr val) -> (expr val) -> expr const
+  -- | bit : bit_op -> typed (expr val) -> expr val -> expr const
+.
+
+@[simp]
+def val_md := val_md' value.
+
 
 inductive instruction : Type
   | ret : typed value -> instruction
