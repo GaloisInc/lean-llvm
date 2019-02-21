@@ -5,8 +5,8 @@ import data.rbmap
 namespace llvm
 
 -- FIXME
-def float : Type 0 := sorry
-def double : Type 0 := sorry
+-- def float : Type 0 := sorry
+-- def double : Type 0 := sorry
 
 -- Identifiers -----------------------------------------------------------------
 
@@ -176,27 +176,13 @@ inductive fcmp_op
 -- Values ----------------------------------------------------------------------
 
 
-inductive val_md' (v : Type) : Type
-  | string : string -> val_md'
-  | value : typed v -> val_md'
-  | ref : nat -> val_md'
-  | node : option val_md' -> val_md'
---  | md_loc : debug_loc v -> val_md
---  | val_md_debug_info (debug_info' lab)
-
--- structure debug_loc v := 
---   ( line  : nat )
---   ( col   : nat )
---   ( scope : val_md v )
---   ( IA    : option (val_md v) )
 
 inductive clause
   | catch 
   | filter
 
 
--- value here does not correspond exactly with LLVM::Value
-mutual inductive value, const_expr
+mutual inductive value, const_expr, val_md, debug_loc
 with value : Type
   | integer : ℤ -> value
   | bool : bool -> value
@@ -210,27 +196,38 @@ with value : Type
   | vector : llvm_type -> list value -> value
   | struct : list (typed value) -> value
   | packed_struct : list (typed value) -> value
-  -- | string : string -> value -- list word8?
-
+  | string : string -> value -- FIXME, should probably actually be list of word8
   | undef : value
   | label : block_label -> value
   | zero_init : value
+  | md : val_md -> value
   -- | asm : bool -> bool -> string -> string -> value
-  -- | md : val_md' value -> value
 
 with const_expr : Type
   | select : typed value -> typed value -> typed value -> const_expr
   | gep : bool -> option nat -> llvm_type -> list (typed value) -> const_expr
   | conv : conv_op -> typed value -> llvm_type -> const_expr
-  -- | block_addr : symbol -> block_label -> expr const
-  -- | fcmp : fcmp_op -> typed (expr val) -> typed (expr val) -> expr const
-  -- | icmp : icmp_op -> typed (expr val) -> typed (expr val) -> expr const
-  -- | arith : arith_op -> typed (expr val) -> (expr val) -> expr const
-  -- | bit : bit_op -> typed (expr val) -> expr val -> expr const
-.
+  | arith : arith_op -> typed value -> value -> const_expr
+  | fcmp : fcmp_op -> typed value -> typed value -> const_expr
+  | icmp : icmp_op -> typed value -> typed value -> const_expr
+  | bit : bit_op -> typed value -> value -> const_expr
+  | block_addr : symbol -> block_label -> const_expr
 
-@[simp]
-def val_md := val_md' value.
+with val_md : Type
+  | string : string -> val_md
+  | value : typed value -> val_md
+  | ref : nat -> val_md
+  | node : list (option val_md) -> val_md
+  | md_loc : debug_loc -> val_md
+-- --  | val_md_debug_info (debug_info' lab)
+
+with debug_loc : Type
+  | debug_loc
+   ( line  : nat )
+   ( col   : nat )
+   ( scope : val_md )
+   ( IA    : option val_md )
+.
 
 
 inductive instruction : Type
