@@ -3,3 +3,6 @@ name = "llvm"
 version = "0.1"
 lean_version = "master"
 path="src"
+
+[dependencies]
+mathlib = {git = "git@github.com:leanprover/mathlib.git", rev = "d4f80f664975f8ea614cb4b02f937c941353ed07"}
