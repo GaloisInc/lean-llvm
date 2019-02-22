@@ -5,12 +5,12 @@ import data.rbmap
 namespace llvm
 
 -- FIXME
-def float : Type 0 := sorry
-def double : Type 0 := sorry
+-- def float : Type 0 := sorry
+-- def double : Type 0 := sorry
 
 -- Identifiers -----------------------------------------------------------------
 
-structure ident := string
+structure ident := (ident : string)
 
 -- Data Layout -----------------------------------------------------------------
 
@@ -32,17 +32,18 @@ inductive layout_spec
   | big_endian                                : layout_spec
   | little_endian                             : layout_spec
   | pointer_size  (address_space : nat)
+                  (size : nat)
                   (abi_align : nat)
-                  (pref_align : option nat )
-                  (mem_size : nat)
-                  (index_size : nat)         : layout_spec
+                  (pref_align : option nat)
+                  (index_size : nat)         : layout_spec 
   | align_size    (align_type : align_type) (size : nat)
                   (abi_align : nat) (pref_align : option nat) : layout_spec
-  | native_int_size (legal_widths : list nat)     : layout_spec
-  | stack_align    : nat -> layout_spec  -- ^ size, abi, pref
-  | function_addres_space : nat -> layout_spec
+  | native_int_size (legal_widths : list nat)     : layout_spec  
+  | stack_align    : nat -> layout_spec
+  | function_address_space : nat -> layout_spec
   | stack_alloca  : nat -> layout_spec
-  | mangling : mangling -> layout_spec
+  | mangling : mangling -> layout_spec  
+.
 
 def data_layout := list layout_spec
 
@@ -83,7 +84,7 @@ structure type_decl :=
 
 -- Symbols ---------------------------------------------------------------------
 
-structure symbol := string
+structure symbol := (symbol : string)
 
 inductive block_label
   | named : ident -> block_label
@@ -92,6 +93,14 @@ inductive block_label
 structure typed (a : Type):=
   ( type  : llvm_type )
   ( value : a )
+
+namespace llvm.typed
+lemma sizeof_spec' (a:Type) [has_sizeof a] (x:typed a) :
+  typed.sizeof a x = 1 + sizeof (x.type) + sizeof (x.value) :=
+begin
+  cases x, unfold typed.sizeof
+end
+end llvm.typed
 
 -- Instructions ----------------------------------------------------------------
 
@@ -167,81 +176,57 @@ inductive fcmp_op
 -- Values ----------------------------------------------------------------------
 
 
-inductive val_md' (v : Type) : Type
-  | string : string -> val_md'
-  | value : typed v -> val_md'
-  | ref : nat -> val_md'
-  | node : option val_md' -> val_md'
---  | md_loc : debug_loc v -> val_md
---  | val_md_debug_info (debug_info' lab)
-
-
--- structure debug_loc v :=
---   ( line  : nat )
---   ( col   : nat )
---   ( scope : val_md v )
---   ( IA    : option (val_md v) )
-
 inductive clause
   | catch
   | filter
 
--- value here does not correspond exactly with LLVM::Value
-mutual inductive value, const_expr
+
+mutual inductive value, const_expr, val_md, debug_loc
 with value : Type
-  | integer : int -> value
+  | integer : ℤ -> value
   | bool : bool -> value
-  | float : float -> value
-  | double : double -> value
+--  | float : float -> value
+--  | double : double -> value
   | ident : ident -> value
+  | const_expr : const_expr -> value
   | symbol : symbol -> value
-  | null
+  | null  : value
   | array : llvm_type -> list value -> value
   | vector : llvm_type -> list value -> value
   | struct : list (typed value) -> value
   | packed_struct : list (typed value) -> value
-  | string : string -> value -- list word8?
-  | const_expr : const_expr -> value
-  | undef
+  | string : string -> value -- FIXME, should probably actually be list of word8
+  | undef : value
   | label : block_label -> value
-  | zero_init
-  | asm : bool -> bool -> string -> string -> value
-  | md : val_md' value -> value
+  | zero_init : value
+  | md : val_md -> value
+  -- | asm : bool -> bool -> string -> string -> value
+
 with const_expr : Type
-  | gep : bool -> option nat -> option llvm_type -> list (typed value) -> const_expr
-  | conv : conv_op -> typed value -> llvm_type -> const_expr
   | select : typed value -> typed value -> typed value -> const_expr
-  | block_addr : symbol -> block_label -> const_expr
+  | gep : bool -> option nat -> llvm_type -> list (typed value) -> const_expr
+  | conv : conv_op -> typed value -> llvm_type -> const_expr
+  | arith : arith_op -> typed value -> value -> const_expr
   | fcmp : fcmp_op -> typed value -> typed value -> const_expr
   | icmp : icmp_op -> typed value -> typed value -> const_expr
-  | arith : arith_op -> typed value -> value -> const_expr
   | bit : bit_op -> typed value -> value -> const_expr
+  | block_addr : symbol -> block_label -> const_expr
 
-/-
-value.rec :
-  Π (C : value → Sort u_1),
-    (Π (a : ℤ), C (value.integer a)) →
-    (Π (a : bool), C (value.bool a)) →
-    (Π (a : float), C (value.float a)) →
-    (Π (a : double), C (value.double a)) →
-    (Π (a : ident), C (value.ident a)) →
-    (Π (a : symbol), C (value.symbol a)) →
-    C value.null →
-    (Π (a : llvm_type) (a_1 : list value), C (value.array a a_1)) →
-    (Π (a : llvm_type) (a_1 : list value), C (value.vector a a_1)) →
-    (Π (a : list (typed value)), C (value.struct a)) →
-    (Π (a : list (typed value)), C (value.packed_struct a)) →
-    (Π (a : string), C (value.string a)) →
-    (Π (a : const_expr), C (value.const_expr a)) →
-    C value.undef →
-    (Π (a : block_label), C (value.label a)) →
-    C value.zero_init →
-    (Π (a a_1 : bool) (a_2 a_3 : string), C (value.asm a a_1 a_2 a_3)) →
-    (Π (a : _nest_1_1._nest_1_1.llvm.val_md'._mut_ value ((λ (idx : unit), psum.inl idx) ())), C (value.md a)) →
-    Π (x : value), C x
-  -/
+with val_md : Type
+  | string : string -> val_md
+  | value : typed value -> val_md
+  | ref : nat -> val_md
+  | node : list (option val_md) -> val_md
+  | md_loc : debug_loc -> val_md
+-- --  | val_md_debug_info (debug_info' lab)
 
-def val_md := val_md' value
+with debug_loc : Type
+  | debug_loc
+   ( line  : nat )
+   ( col   : nat )
+   ( scope : val_md )
+   ( IA    : option val_md )
+.
 
 inductive instruction : Type
   | ret : typed value -> instruction
