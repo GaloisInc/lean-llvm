@@ -66,6 +66,7 @@ infix <+> := spacesep.
 infix <$> := linesep.
 
 def hcat (xs:list doc) : doc := list.foldr next_to empty xs.
+def hcat' (xs:list doc) : doc := list.foldr spacesep empty xs.
 def vcat (xs:list doc) : doc := list.foldr linesep empty xs.
 
 def punctuate (p:doc) : list doc → list doc
@@ -94,6 +95,11 @@ def commas : list doc → doc := hcat ∘ punctuate comma
 
 def quotes : doc → doc := surrounding "\'" "\'"
 def dquotes : doc → doc := surrounding "\"" "\""
+
+def pp_opt {A:Type} (f:A → doc) : option A → doc
+| (some a) := f a
+| none     := empty
+.
 
 end pp
 
@@ -383,6 +389,181 @@ with pp_debug_loc : debug_loc → doc
     ])
 
 using_well_founded ⟨λ _ _, `[exact (sized.psum4_has_wf)] , pp_val_tac⟩
+.
+
+def pp_atomic_ordering : atomic_ordering → doc
+| atomic_ordering.unordered := text "unordered"
+| atomic_ordering.monotonic := text "monotonic"
+| atomic_ordering.acquire   := text "acquire"
+| atomic_ordering.release   := text "release"
+| atomic_ordering.acq_rel   := text "acq_rel"
+| atomic_ordering.seq_cst   := text "seq_cst"
+.
+
+def pp_align : option ℕ → doc
+| (some a) := comma <+> text "align" <+> nat a
+| none     := empty
+.
+
+def pp_scope : option string → doc :=
+  pp_opt (λnm, text "syncscope" <> parens (pp_string_literal nm))
+.
+
+def pp_call (tailcall:bool) (ty:llvm_type) (f:value) (args:list (typed value)) : doc :=
+  (if tailcall then text "tail call" else text "call") <+> 
+  pp_type ty <+> pp_value f <+>
+  parens (commas (list.map (λx, pp_type (typed.type x) <+> pp_value (typed.value x)) args))
+.
+
+def pp_alloca (tp:llvm_type) (len:option (typed value)) (align:option ℕ) : doc :=
+  text "alloca" <+> pp_type tp <>
+  pp_opt (λ v, comma <+> pp_type (typed.type v) <+> pp_value (typed.value v)) len <>
+  pp_align align
+.
+
+def pp_load (ptr:typed value) (ord:option atomic_ordering) (align : option ℕ) : doc :=
+  text "load" <> 
+  (if option.is_some ord then text " atomic" else empty) <+>
+  pp_type (typed.type ptr) <+> pp_value (typed.value ptr) <>
+  pp_opt pp_atomic_ordering ord <>
+  pp_opt pp_align align
+.
+
+def pp_store (val:typed value) (ptr:typed value) (align:option ℕ) : doc :=
+  text "store" <+>
+  pp_type (typed.type val) <+> pp_value (typed.value val) <> comma <+>
+  pp_type (typed.type ptr) <+> pp_value (typed.value ptr) <>
+  pp_align align
+.
+
+def pp_phi_arg (vl:value × block_label) : doc :=
+  brackets (pp_value vl.1 <> comma <+> pp_label vl.2)
+.
+
+def pp_gep (bounds:bool) (base:typed value) (xs:list (typed value)) : doc :=
+  text "getelementpointer" <>
+  (if bounds then text " inbounds" else empty) <+>
+  commas (list.map (λx, pp_type (typed.type x) <+> pp_value (typed.value x)) (base::xs))
+.
+
+def pp_vector_index (v:value) : doc :=
+  pp_type (llvm_type.prim_type (prim_type.integer 32)) <+> pp_value v
+.
+
+def pp_typed_label (l:block_label) : doc :=
+  pp_type (llvm_type.prim_type (prim_type.label)) <+> pp_label l
+.
+
+def pp_invoke (ty:llvm_type) (f:value) (args:list (typed value)) (to:block_label) (uw:block_label) : doc :=
+  text "invoke" <+> pp_type ty <+> pp_value f <>
+  parens (commas (list.map (λv, pp_type (typed.type v) <+> pp_value (typed.value v)) args)) <+>
+  text "to" <+> pp_typed_label to <+>
+  text "unwind" <+> pp_typed_label uw
+.
+
+def pp_clause : (clause × typed value)→ doc
+| (clause.catch, v)  := text "catch" <+> pp_type (typed.type v) <+> pp_value (typed.value v)
+| (clause.filter, v) := text "filter" <+> pp_type (typed.type v) <+> pp_value (typed.value v)
+.
+
+def pp_clauses (is_cleanup:bool) (cs:list (clause × typed value) ): doc :=
+  hcat'
+    ((if is_cleanup then [text "cleanup"] else []) ++
+     (list.map pp_clause cs)
+    )
+.
+
+def pp_switch_entry (ty:llvm_type) : (nat × block_label) → doc
+| (i, l) := pp_type ty <+> nat i <> comma <+> pp_label l
+.
+
+def pp_instr : instruction → doc
+| (instruction.ret v) := text "ret" <+> pp_type (typed.type v) <+> pp_value (typed.value v)
+| (instruction.ret_void) := text "ret void"
+| (instruction.arith op x y) :=
+    pp_arith_op op <+> pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+> pp_value y
+| (instruction.bit op x y) :=
+    pp_bit_op op <+> pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+> pp_value y
+| (instruction.conv op x ty) :=
+    pp_conv_op op <+> pp_type (typed.type x) <+> pp_value (typed.value x) <+> text "to" <+> pp_type ty
+| (instruction.call tailcall ty f args) := pp_call tailcall ty f args
+| (instruction.alloca tp len align) := pp_alloca tp len align
+| (instruction.load ptr ord align) := pp_load ptr ord align
+| (instruction.store val ptr align) := pp_store val ptr align
+| (instruction.icmp op x y) :=
+    text "icmp" <+> pp_icmp_op op <+>
+    pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+>
+    pp_value y
+| (instruction.fcmp op x y) :=
+    text "fcmp" <+> pp_fcmp_op op <+>
+    pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+>
+    pp_value y
+| (instruction.phi ty vls) :=
+    text "phi" <+> pp_type ty <+> commas (list.map pp_phi_arg vls)
+| (instruction.gep bounds base args) := pp_gep bounds base args
+| (instruction.select cond x y) :=
+    text "select" <+>
+    pp_type (typed.type cond) <+> pp_value (typed.value cond) <> comma <+>
+    pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+>
+    pp_type (typed.type x) <+> pp_value y
+| (instruction.extract_value v i) := 
+    text "extractvalue" <+> 
+    pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
+    commas (list.map nat i)
+| (instruction.insert_value v e i) :=
+    text "insertvalue" <+>
+    pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
+    pp_type (typed.type e) <+> pp_value (typed.value e) <> comma <+>
+    commas (list.map nat i)
+| (instruction.extract_elt v i) :=
+    text "extractelement" <+>
+    pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
+    pp_vector_index i
+| (instruction.insert_elt v e i) :=
+    text "insertelement" <+>
+    pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
+    pp_type (typed.type e) <+> pp_value (typed.value e) <> comma <+>
+    pp_vector_index i
+| (instruction.shuffle_vector a b m) :=
+    text "shufflevector" <+>
+    pp_type (typed.type a) <+> pp_value (typed.value a) <> comma <+>
+    pp_type (typed.type a) <+> pp_value b <> comma <+>
+    pp_type (typed.type m) <+> pp_value (typed.value m)
+| (instruction.jump l) :=
+    text "jump" <+> pp_typed_label l
+| (instruction.br cond thn els) :=
+    text "br" <+>
+    pp_type (typed.type cond) <+> pp_value (typed.value cond) <> comma <+>
+    pp_typed_label thn <> comma <+>
+    pp_typed_label els
+| (instruction.invoke tp f args to uw) :=
+    pp_invoke tp f args to uw
+| (instruction.comment str) :=
+    text ";" <> text str
+| (instruction.unreachable) :=
+    text "unreachable"
+| (instruction.unwind) :=
+    text "unwind"
+| (instruction.va_arg v tp) :=
+    text "va_arg" <+>
+    pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
+    pp_type tp
+| (instruction.indirect_br d ls) :=
+    text "indirectbr" <+>
+    pp_type (typed.type d) <+> pp_value (typed.value d) <> comma <+>
+    commas (list.map pp_typed_label ls)
+| (instruction.switch c d ls) :=
+    text "switch" <+>
+    pp_type (typed.type c) <+> pp_value (typed.value c) <> comma <+>
+    pp_typed_label d <+>
+    brackets (hcat (list.map (pp_switch_entry (typed.type c)) ls))
+| (instruction.landing_pad ty mfn c cs) :=
+    text "landingpad" <+> pp_type ty <>
+    pp_opt (λv, text " personality" <+> pp_type (typed.type v) <+> pp_value (typed.value v)) mfn <+>
+    pp_clauses c cs
+| (instruction.resume v) :=
+    text "resume" <+>
+    pp_type (typed.type v) <+> pp_value (typed.value v)
 .
 
 

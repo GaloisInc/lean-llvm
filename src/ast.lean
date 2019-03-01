@@ -234,15 +234,17 @@ inductive instruction : Type
   | arith : arith_op -> typed value -> value -> instruction
   | bit : bit_op -> typed value -> value -> instruction
   | conv : conv_op -> typed value -> llvm_type -> instruction
-  | call : llvm_type -> value -> list (typed value) -> instruction
+  | call : Π(tailcall : bool), llvm_type -> value -> list (typed value) -> instruction
   | alloca : llvm_type -> option (typed value) -> option nat -> instruction
   | load : typed value -> option atomic_ordering -> option nat /- align -/ -> instruction
   | store : typed value -> typed value -> option nat /- align -/ -> instruction
+/-
   | fence : option string -> atomic_ordering -> instruction
   | cmp_xchg (weak : bool) (volatile : bool) : typed value -> typed value -> typed value
             -> option string -> atomic_ordering -> atomic_ordering -> instruction
   | atomic_rw (volatile : bool) : atomic_rw_op -> typed value -> typed value
             -> option string -> atomic_ordering -> instruction
+-/
   | icmp : icmp_op -> typed value -> value -> instruction
   | fcmp : fcmp_op -> typed value -> value -> instruction
   | phi : llvm_type -> list (value × block_label) -> instruction
