@@ -66,7 +66,7 @@ infix <+> := spacesep.
 infix <$> := linesep.
 
 def hcat (xs:list doc) : doc := list.foldr next_to empty xs.
-def hcat' (xs:list doc) : doc := list.foldr spacesep empty xs.
+def hsep (xs:list doc) : doc := list.foldr spacesep empty xs.
 def vcat (xs:list doc) : doc := list.foldr linesep empty xs.
 
 def punctuate (p:doc) : list doc → list doc
@@ -467,7 +467,7 @@ def pp_clause : (clause × typed value)→ doc
 .
 
 def pp_clauses (is_cleanup:bool) (cs:list (clause × typed value) ): doc :=
-  hcat'
+  hsep
     ((if is_cleanup then [text "cleanup"] else []) ++
      (list.map pp_clause cs)
     )
@@ -566,5 +566,145 @@ def pp_instr : instruction → doc
     pp_type (typed.type v) <+> pp_value (typed.value v)
 .
 
+
+def pp_stmt (s:stmt) : doc :=
+  text "    " <>
+  (match s.assign with
+   | none   := empty
+   | some i := pp_ident i <+> text "=" <+> pp_instr s.instr
+   end)
+   --  <>   pp_attached_metadata s.metadata
+.
+
+def pp_basic_block (bb:basic_block) : doc :=
+  vcat ([ pp_opt pp_label bb.label ] ++ list.map pp_stmt bb.stmts)
+.
+
+def pp_comdat_name (nm:string) : doc :=
+  text "comdat" <> parens (text "$" <> text nm)
+.
+
+def pp_fun_attr : fun_attr → doc
+| (fun_attr.align_stack w)  := text "alignstack" <> parens (nat w)
+| fun_attr.alwaysinline     := text "alwaysinline"
+| fun_attr.builtin          := text "builtin"
+| fun_attr.cold             := text "cold"
+| fun_attr.inlinehint       := text "inlinehint"
+| fun_attr.jumptable        := text "jumptable"
+| fun_attr.minsize          := text "minsize"
+| fun_attr.naked            := text "naked"
+| fun_attr.nobuiltin        := text "nobuiltin"
+| fun_attr.noduplicate      := text "noduplicate"
+| fun_attr.noimplicitfloat  := text "noimplicitfloat"
+| fun_attr.noinline         := text "noinline"
+| fun_attr.nonlazybind      := text "nonlazybind"
+| fun_attr.noredzone        := text "noredzone"
+| fun_attr.noreturn         := text "noreturn"
+| fun_attr.nounwind         := text "nounwind"
+| fun_attr.optnone          := text "optnone"
+| fun_attr.optsize          := text "optsize"
+| fun_attr.readnone         := text "readnone"
+| fun_attr.readonly         := text "readonly"
+| fun_attr.returns_twice    := text "returns_twice"
+| fun_attr.sanitize_address := text "sanitize_address"
+| fun_attr.sanitize_memory  := text "sanitize_memory"
+| fun_attr.sanitize_thread  := text "sanitize_thread"
+| fun_attr.ssp              := text "ssp"
+| fun_attr.ssp_req          := text "sspreq"
+| fun_attr.ssp_strong       := text "sspstrong"
+| fun_attr.uwtable          := text "uwtable"
+.
+
+def pp_declare (d:declare) : doc :=
+  text "declare" <+>
+  pp_type d.ret_type <+>
+  pp_symbol d.name <>
+  pp_arg_list d.var_args (list.map pp_type d.args) <+>
+  hsep (list.map pp_fun_attr d.attrs) <>
+  pp_opt (λnm, text " " <> pp_comdat_name nm) d.comdat
+.
+
+def pp_linkage : linkage → doc
+| linkage.private_linkage              := text "private"
+| linkage.linker_private               := text "linker_private"
+| linkage.linker_private_weak          := text "linker_private_weak"
+| linkage.linker_private_weak_def_auto := text "linker_private_weak_def_auto"
+| linkage.internal		       := text "internal"
+| linkage.available_externally	       := text "available_externally"
+| linkage.linkonce		       := text "linkonce"
+| linkage.weak			       := text "weak"
+| linkage.common		       := text "common"
+| linkage.appending		       := text "appending"
+| linkage.extern_weak		       := text "extern_weak"
+| linkage.linkonce_odr		       := text "linkonce_odr"
+| linkage.weak_odr		       := text "weak_odr"
+| linkage.external		       := text "external"
+| linkage.dll_import		       := text "dllimport"
+| linkage.dll_export		       := text "dllexport"
+.
+
+def pp_visibility : visibility → doc
+| visibility.default               := text "default"
+| visibility.hidden                := text "hidden"
+| visibility.protected_visibility  := text "protected"
+.
+
+def pp_global_attrs (ga:global_attrs) : doc :=
+  pp_opt pp_linkage ga.linkage <+>
+  pp_opt pp_visibility ga.visibility <+>
+  (if ga.const then text "const" else text "global")
+.
+
+def pp_global (g:global) : doc :=
+  pp_symbol g.sym <+> text "=" <+>
+  pp_global_attrs g.attrs <+>
+  pp_type g.type <+>
+  pp_opt pp_value g.value <>
+  pp_align g.align
+  -- <> pp_attached_metadata g.metadata
+.
+
+def pp_global_alias (ga:global_alias) : doc :=
+  pp_symbol ga.name <+> text "=" <+>
+  (match ga.target with
+   | (value.symbol _) := pp_type ga.type <> text " "
+   | _ := empty
+   end) <>
+  pp_value ga.target
+.
+
+def pp_type_decl (t:type_decl) : doc :=
+  pp_ident t.name <+> text "= type" <+> pp_type t.value
+.
+
+def pp_gc (x:GC) : doc := pp_string_literal x.gc
+.
+
+def pp_define (d:define) : doc :=
+  text "define" <+>
+  pp_opt pp_linkage d.linkage <+>
+  pp_type d.ret_type <+>
+  pp_symbol d.name <>
+  pp_arg_list d.var_args (list.map (λ a, pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args) <+>
+  hsep (list.map pp_fun_attr d.attrs) <>
+  pp_opt (λs, text " section" <+> pp_string_literal s) d.sec <>
+  pp_opt (λg, text " gc" <+> pp_gc g) d.gc <+>
+  -- pp_mds d.metadata <+>
+  text "{" <$> vcat (list.map pp_basic_block d.body) <$> text "}"
+.
+
+def pp_module (m:module) : doc :=
+  pp_layout m.data_layout <$>
+  hcat (list.join
+  [ list.map pp_type_decl m.types
+  , list.map pp_global m.globals
+  , list.map pp_global_alias m.aliases
+  , list.map pp_declare m.declares
+  , list.map pp_define m.defines
+  -- , list.map pp_named_md m.named_md
+  -- , list.map pp_unnamed_md m.unnamed_md
+  -- , list.map pp_comdat m.comdat
+  ])
+.
 
 end llvm.
