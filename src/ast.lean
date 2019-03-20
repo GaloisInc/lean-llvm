@@ -35,14 +35,14 @@ inductive layout_spec
                   (size : nat)
                   (abi_align : nat)
                   (pref_align : option nat)
-                  (index_size : nat)         : layout_spec 
+                  (index_size : nat)         : layout_spec
   | align_size    (align_type : align_type) (size : nat)
                   (abi_align : nat) (pref_align : option nat) : layout_spec
-  | native_int_size (legal_widths : list nat)     : layout_spec  
+  | native_int_size (legal_widths : list nat)     : layout_spec
   | stack_align    : nat -> layout_spec
   | function_address_space : nat -> layout_spec
   | stack_alloca  : nat -> layout_spec
-  | mangling : mangling -> layout_spec  
+  | mangling : mangling -> layout_spec
 .
 
 def data_layout := list layout_spec
@@ -234,15 +234,17 @@ inductive instruction : Type
   | arith : arith_op -> typed value -> value -> instruction
   | bit : bit_op -> typed value -> value -> instruction
   | conv : conv_op -> typed value -> llvm_type -> instruction
-  | call : llvm_type -> value -> list (typed value) -> instruction
+  | call : Π(tailcall : bool), llvm_type -> value -> list (typed value) -> instruction
   | alloca : llvm_type -> option (typed value) -> option nat -> instruction
   | load : typed value -> option atomic_ordering -> option nat /- align -/ -> instruction
   | store : typed value -> typed value -> option nat /- align -/ -> instruction
+/-
   | fence : option string -> atomic_ordering -> instruction
   | cmp_xchg (weak : bool) (volatile : bool) : typed value -> typed value -> typed value
             -> option string -> atomic_ordering -> atomic_ordering -> instruction
   | atomic_rw (volatile : bool) : atomic_rw_op -> typed value -> typed value
             -> option string -> atomic_ordering -> instruction
+-/
   | icmp : icmp_op -> typed value -> value -> instruction
   | fcmp : fcmp_op -> typed value -> value -> instruction
   | phi : llvm_type -> list (value × block_label) -> instruction
@@ -351,9 +353,9 @@ inductive fun_attr
    | sanitize_memory
    | sanitize_thread
    | ssp
-   | ss_preq
-   | ss_pstrong
-   | uw_table
+   | ssp_req
+   | ssp_strong
+   | uwtable
 
 structure declare :=
   ( ret_type : llvm_type      )
@@ -363,7 +365,7 @@ structure declare :=
   ( attrs   : list fun_attr  )
   ( comdat  : option string )
 
-structure GC := string
+structure GC := (gc : string).
 
 structure stmt :=
   (assign : option ident)
