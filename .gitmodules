@@ -1,0 +1,6 @@
+[submodule "pretty-shim/deps/llvm-pretty"]
+	path = pretty-shim/deps/llvm-pretty
+	url = git@github.com:elliottt/llvm-pretty
+[submodule "pretty-shim/deps/llvm-pretty-bc-parser"]
+	path = pretty-shim/deps/llvm-pretty-bc-parser
+	url = git@github.com:GaloisInc/llvm-pretty-bc-parser

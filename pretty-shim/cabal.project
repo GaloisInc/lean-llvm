@@ -1,0 +1,6 @@
+packages:
+  ./
+
+optional-packages:
+  deps/llvm-pretty/
+  deps/llvm-pretty-bc-parser/
