@@ -1,12 +1,16 @@
 /- A transliteration of llvm-pretty https://github.com/elliottt/llvm-pretty/blob/master/src/Text/LLVM/AST.hs -/
 import data.bitvec
 import data.rbmap
+import data.string
 
 namespace llvm
 
 -- FIXME
 -- def float : Type 0 := sorry
 -- def double : Type 0 := sorry
+
+def strmap (a:Type) := @rbmap string a string.has_lt'.lt
+def strmap_empty (a:Type) : strmap a := rbmap.from_list []
 
 -- Identifiers -----------------------------------------------------------------
 
@@ -217,8 +221,8 @@ with val_md : Type
   | value : typed value -> val_md
   | ref : nat -> val_md
   | node : list (option val_md) -> val_md
-  | md_loc : debug_loc -> val_md
--- --  | val_md_debug_info (debug_info' lab)
+  | loc : debug_loc -> val_md
+  | debug_info : val_md -- FIXME , just a placeholder for now
 
 with debug_loc : Type
   | debug_loc
@@ -325,7 +329,7 @@ structure global :=
   ( type  : llvm_type                )
   ( value : option value            )
   ( align : option nat              )
-  ( metadata : rbmap string val_md )
+  ( metadata : strmap val_md )
 
 inductive fun_attr
    | align_stack : nat -> fun_attr
@@ -378,15 +382,15 @@ structure basic_block :=
 
 structure define :=
   ( linkage  : option linkage  )
-  ( ret_type  : llvm_type       )
+  ( ret_type : llvm_type       )
   ( name     : symbol         )
   ( args     : list (typed ident)  )
-  ( var_args  : bool           )
+  ( var_args : bool           )
   ( attrs    : list fun_attr   )
   ( sec      : option string  )
   ( gc       : option GC      )
   ( body     : list basic_block)
-  ( metadata : rbmap string val_md)
+  ( metadata : strmap val_md)
   ( comdat   : option string   )
 
 structure global_alias :=
@@ -401,7 +405,7 @@ structure module :=
   ( types      : list type_decl    ) -- ^ top-level type aliases
   ( named_md    : list named_md     )
   ( unnamed_md  : list unnamed_md   )
-  ( comdat     : rbmap string selection_kind)
+  ( comdat     : strmap selection_kind)
   ( globals    : list global   ) -- ^ global value declarations
   ( declares   : list declare  ) -- ^ external function declarations (without definitions)
   ( defines    : list define   ) -- ^ internal function declarations (with definitions)

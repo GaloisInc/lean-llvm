@@ -4,50 +4,16 @@ import init.data.to_string
 import data.bitvec
 import data.rbmap
 
-import .ast
-
 import tactic.linarith
 
-namespace sized
-
-def map {a b:Type} [has_sizeof a] (sz:ℕ) (f : Πx:a, sizeof x < sz → b) : Πxs:list a, (sizeof xs <= sz) → list b
-| [] _      := []
-| (x::xs) H :=
-   have Hx  : sizeof x  <  sz, by { unfold sizeof has_sizeof.sizeof list.sizeof at *, linarith },
-   have Hxs : sizeof xs <= sz, by { unfold sizeof has_sizeof.sizeof list.sizeof at *, linarith },
-   f x Hx :: map xs Hxs
-.
-
-@[reducible]
-def map_over {a b:Type} [has_sizeof a] (xs:list a) (f : Πx:a, sizeof x < sizeof xs → b) : list b :=
-  map (sizeof xs) f xs (nat.less_than_or_equal.refl _).
-
-@[reducible]
-def psum_size {A B:Type} (f:A → ℕ) (g:B → ℕ) : psum A B → ℕ
-| (psum.inl x) := f x
-| (psum.inr y) := g y
-.
-
-@[reducible]
-def psum3_has_wf {A B C:Type} [has_sizeof A] [has_sizeof B] [has_sizeof C] : has_well_founded (psum A (psum B C)) :=
-  ⟨ measure (psum_size sizeof (psum_size sizeof sizeof))
-  , measure_wf _
-  ⟩.
-
-@[reducible]
-def psum4_has_wf {A B C D:Type} [has_sizeof A] [has_sizeof B] [has_sizeof C] [has_sizeof D]: has_well_founded (psum A (psum B (psum C D))) :=
-  ⟨ measure (psum_size sizeof (psum_size sizeof (psum_size sizeof sizeof)))
-  , measure_wf _
-  ⟩.
-
-
-end sized
+import .ast
+import .sized
 
 namespace pp
 
 reserve infixl ` <> `: 50
 reserve infixl ` <+> `: 50
-reserve infixl ` <$> `: 60
+reserve infixl ` $+$ `: 60
 
 structure doc : Type := (compose : string → string).
 
@@ -63,7 +29,7 @@ def spacesep (x y:doc) : doc  := x <> text " " <> y
 def linesep (x y:doc)  : doc  := x <> text "\n" <> y.
 
 infix <+> := spacesep.
-infix <$> := linesep.
+infix $+$ := linesep.
 
 def hcat (xs:list doc) : doc := list.foldr next_to empty xs.
 def hsep (xs:list doc) : doc := list.foldr spacesep empty xs.
@@ -373,7 +339,8 @@ with pp_md : val_md → doc
         | none   := (λ _, text "null")
         | some x := (λ H, pp_md x)
         end )))
-| (val_md.md_loc loc) := pp_debug_loc loc
+| (val_md.loc loc) := pp_debug_loc loc
+| (val_md.debug_info) := empty
 
 with pp_debug_loc : debug_loc → doc
 | (debug_loc.debug_loc line col scope none) := text "!DILocation" <> parens (commas
@@ -570,7 +537,7 @@ def pp_instr : instruction → doc
 def pp_stmt (s:stmt) : doc :=
   text "    " <>
   (match s.assign with
-   | none   := empty
+   | none   := pp_instr s.instr
    | some i := pp_ident i <+> text "=" <+> pp_instr s.instr
    end)
    --  <>   pp_attached_metadata s.metadata
@@ -690,12 +657,13 @@ def pp_define (d:define) : doc :=
   pp_opt (λs, text " section" <+> pp_string_literal s) d.sec <>
   pp_opt (λg, text " gc" <+> pp_gc g) d.gc <+>
   -- pp_mds d.metadata <+>
-  text "{" <$> vcat (list.map pp_basic_block d.body) <$> text "}"
+  vcat ([ text "{" ] ++ list.map pp_basic_block d.body ++ [ text "}" ])
 .
 
 def pp_module (m:module) : doc :=
-  pp_layout m.data_layout <$>
-  hcat (list.join
+  pp_opt (λnm, text "source_filename = " <> pp_string_literal nm) m.source_name $+$
+  text "target datalayout = " <> dquotes (pp_layout m.data_layout) $+$
+  vcat (list.join
   [ list.map pp_type_decl m.types
   , list.map pp_global m.globals
   , list.map pp_global_alias m.aliases
