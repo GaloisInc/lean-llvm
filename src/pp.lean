@@ -1,13 +1,12 @@
 import init.data.list
-import init.data.to_string
+import init.data.rbmap
+import init.data.string
 
-import data.bitvec
-import data.rbmap
-
-import tactic.linarith
+--import data.bitvec
+--import tactic.linarith
 
 import .ast
-import .sized
+--import .sized
 
 namespace pp
 
@@ -15,15 +14,17 @@ reserve infixl ` <> `: 50
 reserve infixl ` <+> `: 50
 reserve infixl ` $+$ `: 60
 
-structure doc : Type := (compose : string → string).
+structure doc : Type := (compose : String → String).
 
-def text (x:string) := doc.mk (λz, x ++ z).
-def render (x:doc) : string := x.compose "".
-def to_doc {a:Type} [has_to_string a] : a → doc := text ∘ to_string.
+def text (x:String) := doc.mk (λz, x ++ z).
+def render (x:doc) : String := x.compose "".
+def to_doc {a:Type} [HasToString a] : a → doc := text ∘ toString.
 
 def empty : doc := doc.mk (λ z, z).
 def next_to (x y : doc) : doc := doc.mk (x.compose ∘ y.compose).
 infix <>  := next_to.
+
+instance : Inhabited doc := ⟨empty⟩
 
 def spacesep (x y:doc) : doc  := x <> text " " <> y
 def linesep (x y:doc)  : doc  := x <> text "\n" <> y.
@@ -31,24 +32,24 @@ def linesep (x y:doc)  : doc  := x <> text "\n" <> y.
 infix <+> := spacesep.
 infix $+$ := linesep.
 
-def hcat (xs:list doc) : doc := list.foldr next_to empty xs.
-def hsep (xs:list doc) : doc := list.foldr spacesep empty xs.
-def vcat (xs:list doc) : doc := list.foldr linesep empty xs.
+def hcat (xs:List doc) : doc := List.foldr next_to empty xs.
+def hsep (xs:List doc) : doc := List.foldr spacesep empty xs.
+def vcat (xs:List doc) : doc := List.foldr linesep empty xs.
 
-def punctuate (p:doc) : list doc → list doc
+def punctuate (p:doc) : List doc → List doc
 | [ ]     := []
-| (x::xs) := x :: (list.foldr (λ a b, p :: a :: b) [] xs)
+| (x::xs) := x :: (List.foldr (λ a b, p :: a :: b) [] xs)
 .
 
-def nat : ℕ → doc := text ∘ to_string
-def int : ℤ → doc := text ∘ to_string
+def nat : ℕ → doc := text ∘ toString
+def int : Int → doc := text ∘ toString
 
 def pp_nonzero : ℕ → doc
-| nat.zero := empty
+| Nat.zero := empty
 | n := nat n
 .
 
-def surrounding (first last : string) (x:doc) : doc :=
+def surrounding (first last : String) (x:doc) : doc :=
   text first <> x <> text last
 
 def parens   : doc → doc := surrounding "(" ")"
@@ -57,12 +58,12 @@ def angles   : doc → doc := surrounding "<" ">"
 def braces   : doc → doc := surrounding "{" "}"
 
 def comma : doc := text ","
-def commas : list doc → doc := hcat ∘ punctuate comma
+def commas : List doc → doc := hcat ∘ punctuate comma
 
 def quotes : doc → doc := surrounding "\'" "\'"
 def dquotes : doc → doc := surrounding "\"" "\""
 
-def pp_opt {A:Type} (f:A → doc) : option A → doc
+def pp_opt {A:Type} (f:A → doc) : Option A → doc
 | (some a) := f a
 | none     := empty
 .
@@ -76,9 +77,9 @@ open pp
 section layout_spec.
 open layout_spec.
 
-def pp_layout_body (sz abi:ℕ) (pref: option ℕ) : doc :=
+def pp_layout_body (sz abi:ℕ) (pref: Option ℕ) : doc :=
   nat sz <> text ":" <> nat abi <>
-    (option.rec empty (λx, text ":" <> nat x) pref)
+    (Option.casesOn pref empty (λx, text ":" <> nat x))
 .
 
 def pp_align_type : align_type → doc
@@ -103,7 +104,7 @@ def pp_layout_spec : layout_spec → doc
      text "p" <> pp_nonzero addr_space <> text ":" <> pp_layout_body sz abi pref
 | (align_size tp sz abi pref) :=
      pp_align_type tp <> pp_layout_body sz abi pref
-| (native_int_size szs) := text "n" <> hcat (punctuate (text ":") (list.map nat szs))
+| (native_int_size szs) := text "n" <> hcat (punctuate (text ":") (List.map nat szs))
 | (stack_align n) := text "S" <> nat n
 | (layout_spec.mangling m)     := text "m:" <> pp_mangling m
 | (function_address_space n)  := text "P" <> nat n
@@ -111,7 +112,7 @@ def pp_layout_spec : layout_spec → doc
 .
 
 def pp_layout (xs:data_layout) : doc
-  := hcat (punctuate (text "-") (list.map pp_layout_spec xs))
+  := hcat (punctuate (text "-") (List.map pp_layout_spec xs))
 .
 
 def l1 : data_layout :=
@@ -129,7 +130,7 @@ end layout_spec.
 
 
 -- FIXME! We need to handle escaping...
-def pp_string_literal : string → doc := dquotes ∘ text
+def pp_string_literal : String → doc := dquotes ∘ text
 
 def pp_ident (n:ident) : doc :=
   text "%" <> text (n.ident)  -- FIXME! deal with the 'validIdentifier' question
@@ -164,28 +165,28 @@ def pp_prim_type : prim_type → doc
 | (prim_type.integer n)    := text "i" <> int n
 .
 
-def pp_arg_list (va:bool) (xs:list doc) : doc :=
+def pp_arg_list (va:Bool) (xs:List doc) : doc :=
   parens (commas (xs ++ if va then [text "..."] else []))
 
+/-
 meta def pp_type_tac :=
   `[unfold has_well_founded.r measure inv_image sizeof has_sizeof.sizeof
       llvm_type.sizeof
       at *,
     try { linarith }
    ].
+-/
 
-def pp_type : llvm_type → doc
+partial def pp_type : llvm_type → doc
 | (llvm_type.prim_type pt)       := pp_prim_type pt
 | (llvm_type.alias n)            := pp_ident n
 | (llvm_type.array len ty)       := brackets (int len <+> text "x" <+> pp_type ty)
 | (llvm_type.ptr_to ty)          := pp_type ty <> text "*"
-| (llvm_type.struct ts)          := braces (commas (sized.map_over ts (λ t H, pp_type t)))
-| (llvm_type.packed_struct ts)   := packed_braces (commas (sized.map_over ts (λ t H, pp_type t)))
-| (llvm_type.fun_ty ret args va) := pp_type ret <> pp_arg_list va (sized.map_over args (λ a H, pp_type a))
+| (llvm_type.struct ts)          := braces (commas (List.map pp_type ts))
+| (llvm_type.packed_struct ts)   := packed_braces (commas (List.map pp_type ts))
+| (llvm_type.fun_ty ret args va) := pp_type ret <> pp_arg_list va (List.map pp_type args)
 | (llvm_type.vector len ty)      := angles (int len <+> text "x" <+> pp_type ty)
 | (llvm_type.opaque)             := text "opaque"
-
-using_well_founded ⟨λ _ _, `[exact ⟨measure sizeof, measure_wf _⟩] , pp_type_tac⟩
 .
 
 
@@ -204,11 +205,11 @@ def pp_conv_op : conv_op → doc
 | conv_op.bit_cast   := text "bitcast"
 .
 
-def pp_wrap_bits (nuw nsw:bool) : doc :=
+def pp_wrap_bits (nuw nsw:Bool) : doc :=
   (if nuw then text " nuw" else empty) <>
   (if nsw then text " nsw" else empty)
 
-def pp_exact_bit (exact:bool) : doc :=
+def pp_exact_bit (exact:Bool) : doc :=
   if exact then text " exact" else empty
 
 def pp_arith_op : arith_op → doc
@@ -268,6 +269,7 @@ def pp_bit_op : bit_op → doc
 .
 
 
+/-
 meta def pp_val_tac :=
   `[unfold has_well_founded.r measure inv_image sized.psum_size sizeof has_sizeof.sizeof
       typed.sizeof const_expr.sizeof value.sizeof val_md.sizeof debug_loc.sizeof option.sizeof
@@ -275,26 +277,9 @@ meta def pp_val_tac :=
     repeat { rw llvm.typed.sizeof_spec' at *, unfold sizeof has_sizeof.sizeof at * },
     try { linarith }
    ].
+-/
 
-mutual def pp_value, pp_const_expr, pp_md, pp_debug_loc
-with pp_value : value → doc
-| value.null               := text "null"
-| value.undef              := text "undef"
-| value.zero_init          := text "0"
-| (value.integer i)        := to_doc i
-| (value.bool b)           := to_doc b
-| (value.string s)         := text "c" <> pp_string_literal s
-| (value.ident n)          := pp_ident n
-| (value.symbol n)         := pp_symbol n
-| (value.const_expr e)     := pp_const_expr e
-| (value.label l)          := pp_label l
-| (value.array tp vs)      := brackets (commas (sized.map_over vs (λv H, pp_type tp <+> pp_value v)))
-| (value.vector tp vs)     := angles (commas (sized.map_over vs (λv H, pp_type tp <+> pp_value v)))
-| (value.struct fs)        := braces (commas (sized.map_over fs (λf H, pp_type (f.type) <+> pp_value (f.value))))
-| (value.packed_struct fs) := packed_braces (commas (sized.map_over fs (λf H, pp_type (f.type) <+> pp_value (f.value))))
-| (value.md md)            := pp_md md
-
-with pp_const_expr : const_expr → doc
+def pp_const_expr (pp_value : value → doc) : const_expr → doc
 | (const_expr.select cond x y) :=
      text "select" <+>
      pp_type (typed.type cond) <+> pp_value (typed.value cond) <+>
@@ -305,7 +290,7 @@ with pp_const_expr : const_expr → doc
 | (const_expr.gep inbounds inrange tp vs) :=
     text "getelementpointer" <+>
     (if inbounds then text "inbounds " else empty) <>
-    parens ( pp_type tp <> comma <+> commas (sized.map_over vs (λ v H, pp_type (typed.type v) <+> pp_value (typed.value v))))
+    parens ( pp_type tp <> comma <+> commas (List.map (λ (v:typed value), pp_type v.type <+> pp_value v.value) vs))
 
 | (const_expr.conv op x tp) :=
     pp_conv_op op <+> parens (pp_type (typed.type x) <+> pp_value (typed.value x) <+> text "to" <+> pp_type tp)
@@ -328,21 +313,9 @@ with pp_const_expr : const_expr → doc
 
 | (const_expr.block_addr sym lab) :=
     text "blockaddress" <+> parens (pp_symbol sym <> comma <+> pp_label lab)
+.
 
-with pp_md : val_md → doc
-| (val_md.string s)  := text "!" <> pp_string_literal s
-| (val_md.value x)   := pp_type (typed.type x) <+> pp_value (typed.value x)
-| (val_md.ref i)     := text "!" <> int i
-| (val_md.node xs)   := text "!" <> braces (commas 
-      (sized.map_over xs (λ mx,
-        match mx with
-        | none   := (λ _, text "null")
-        | some x := (λ H, pp_md x)
-        end )))
-| (val_md.loc loc) := pp_debug_loc loc
-| (val_md.debug_info) := empty
-
-with pp_debug_loc : debug_loc → doc
+def pp_debug_loc (pp_md : val_md → doc) : debug_loc → doc
 | (debug_loc.debug_loc line col scope none) := text "!DILocation" <> parens (commas
     [ text "line:"   <+> int line
     , text "column:" <+> int col
@@ -354,8 +327,34 @@ with pp_debug_loc : debug_loc → doc
     , text "scope:"     <+> pp_md scope
     , text "inlinedAt:" <+> pp_md ia
     ])
+.
 
-using_well_founded ⟨λ _ _, `[exact (sized.psum4_has_wf)] , pp_val_tac⟩
+partial def pp_md (pp_value : value → doc) : val_md → doc
+| (val_md.string s)  := text "!" <> pp_string_literal s
+| (val_md.value x)   := pp_type (typed.type x) <+> pp_value (typed.value x)
+| (val_md.ref i)     := text "!" <> int i
+| (val_md.node xs)   := text "!" <> braces (commas (List.map (λ mx, Option.casesOn mx (text "null") pp_md) xs))
+| (val_md.loc loc) := pp_debug_loc pp_md loc
+| (val_md.debug_info) := empty
+.
+
+
+partial def pp_value : value → doc
+| value.null               := text "null"
+| value.undef              := text "undef"
+| value.zero_init          := text "0"
+| (value.integer i)        := to_doc i
+| (value.bool b)           := to_doc b
+| (value.string s)         := text "c" <> pp_string_literal s
+| (value.ident n)          := pp_ident n
+| (value.symbol n)         := pp_symbol n
+| (value.const_expr e)     := pp_const_expr pp_value e
+| (value.label l)          := pp_label l
+| (value.array tp vs)      := brackets (commas (List.map (λv, pp_type tp <+> pp_value v) vs))
+| (value.vector tp vs)     := angles (commas (List.map (λv, pp_type tp <+> pp_value v) vs))
+| (value.struct fs)        := braces (commas (List.map (λ(f : typed value), pp_type f.type <+> pp_value f.value) fs))
+| (value.packed_struct fs) := packed_braces (commas (List.map (λ(f:typed value), pp_type f.type <+> pp_value f.value) fs))
+| (value.md md)            := pp_md pp_value md
 .
 
 def pp_atomic_ordering : atomic_ordering → doc
@@ -367,36 +366,36 @@ def pp_atomic_ordering : atomic_ordering → doc
 | atomic_ordering.seq_cst   := text "seq_cst"
 .
 
-def pp_align : option ℕ → doc
+def pp_align : Option ℕ → doc
 | (some a) := comma <+> text "align" <+> nat a
 | none     := empty
 .
 
-def pp_scope : option string → doc :=
+def pp_scope : Option String → doc :=
   pp_opt (λnm, text "syncscope" <> parens (pp_string_literal nm))
 .
 
-def pp_call (tailcall:bool) (ty:llvm_type) (f:value) (args:list (typed value)) : doc :=
-  (if tailcall then text "tail call" else text "call") <+> 
+def pp_call (tailcall:Bool) (ty:llvm_type) (f:value) (args:List (typed value)) : doc :=
+  (if tailcall then text "tail call" else text "call") <+>
   pp_type ty <+> pp_value f <+>
-  parens (commas (list.map (λx, pp_type (typed.type x) <+> pp_value (typed.value x)) args))
+  parens (commas (List.map (λ(x:typed value), pp_type x.type <+> pp_value x.value) args))
 .
 
-def pp_alloca (tp:llvm_type) (len:option (typed value)) (align:option ℕ) : doc :=
+def pp_alloca (tp:llvm_type) (len:Option (typed value)) (align:Option ℕ) : doc :=
   text "alloca" <+> pp_type tp <>
   pp_opt (λ v, comma <+> pp_type (typed.type v) <+> pp_value (typed.value v)) len <>
   pp_align align
 .
 
-def pp_load (ptr:typed value) (ord:option atomic_ordering) (align : option ℕ) : doc :=
-  text "load" <> 
-  (if option.is_some ord then text " atomic" else empty) <+>
+def pp_load (ptr:typed value) (ord:Option atomic_ordering) (align : Option ℕ) : doc :=
+  text "load" <>
+  (if Option.isSome ord then text " atomic" else empty) <+>
   pp_type (typed.type ptr) <+> pp_value (typed.value ptr) <>
   pp_opt pp_atomic_ordering ord <>
   pp_opt pp_align align
 .
 
-def pp_store (val:typed value) (ptr:typed value) (align:option ℕ) : doc :=
+def pp_store (val:typed value) (ptr:typed value) (align:Option ℕ) : doc :=
   text "store" <+>
   pp_type (typed.type val) <+> pp_value (typed.value val) <> comma <+>
   pp_type (typed.type ptr) <+> pp_value (typed.value ptr) <>
@@ -407,10 +406,10 @@ def pp_phi_arg (vl:value × block_label) : doc :=
   brackets (pp_value vl.1 <> comma <+> pp_label vl.2)
 .
 
-def pp_gep (bounds:bool) (base:typed value) (xs:list (typed value)) : doc :=
+def pp_gep (bounds:Bool) (base:typed value) (xs:List (typed value)) : doc :=
   text "getelementpointer" <>
   (if bounds then text " inbounds" else empty) <+>
-  commas (list.map (λx, pp_type (typed.type x) <+> pp_value (typed.value x)) (base::xs))
+  commas (List.map (λ(x:typed value), pp_type x.type <+> pp_value x.value) (base::xs))
 .
 
 def pp_vector_index (v:value) : doc :=
@@ -421,9 +420,9 @@ def pp_typed_label (l:block_label) : doc :=
   pp_type (llvm_type.prim_type (prim_type.label)) <+> pp_label l
 .
 
-def pp_invoke (ty:llvm_type) (f:value) (args:list (typed value)) (to:block_label) (uw:block_label) : doc :=
+def pp_invoke (ty:llvm_type) (f:value) (args:List (typed value)) (to:block_label) (uw:block_label) : doc :=
   text "invoke" <+> pp_type ty <+> pp_value f <>
-  parens (commas (list.map (λv, pp_type (typed.type v) <+> pp_value (typed.value v)) args)) <+>
+  parens (commas (List.map (λ(v:typed value), pp_type v.type <+> pp_value v.value) args)) <+>
   text "to" <+> pp_typed_label to <+>
   text "unwind" <+> pp_typed_label uw
 .
@@ -433,14 +432,14 @@ def pp_clause : (clause × typed value)→ doc
 | (clause.filter, v) := text "filter" <+> pp_type (typed.type v) <+> pp_value (typed.value v)
 .
 
-def pp_clauses (is_cleanup:bool) (cs:list (clause × typed value) ): doc :=
+def pp_clauses (is_cleanup:Bool) (cs:List (clause × typed value) ): doc :=
   hsep
     ((if is_cleanup then [text "cleanup"] else []) ++
-     (list.map pp_clause cs)
+     (List.map pp_clause cs)
     )
 .
 
-def pp_switch_entry (ty:llvm_type) : (nat × block_label) → doc
+def pp_switch_entry (ty:llvm_type) : (ℕ × block_label) → doc
 | (i, l) := pp_type ty <+> nat i <> comma <+> pp_label l
 .
 
@@ -466,22 +465,22 @@ def pp_instr : instruction → doc
     pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+>
     pp_value y
 | (instruction.phi ty vls) :=
-    text "phi" <+> pp_type ty <+> commas (list.map pp_phi_arg vls)
+    text "phi" <+> pp_type ty <+> commas (List.map pp_phi_arg vls)
 | (instruction.gep bounds base args) := pp_gep bounds base args
 | (instruction.select cond x y) :=
     text "select" <+>
     pp_type (typed.type cond) <+> pp_value (typed.value cond) <> comma <+>
     pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+>
     pp_type (typed.type x) <+> pp_value y
-| (instruction.extract_value v i) := 
-    text "extractvalue" <+> 
+| (instruction.extract_value v i) :=
+    text "extractvalue" <+>
     pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
-    commas (list.map nat i)
+    commas (List.map nat i)
 | (instruction.insert_value v e i) :=
     text "insertvalue" <+>
     pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
     pp_type (typed.type e) <+> pp_value (typed.value e) <> comma <+>
-    commas (list.map nat i)
+    commas (List.map nat i)
 | (instruction.extract_elt v i) :=
     text "extractelement" <+>
     pp_type (typed.type v) <+> pp_value (typed.value v) <> comma <+>
@@ -518,12 +517,12 @@ def pp_instr : instruction → doc
 | (instruction.indirect_br d ls) :=
     text "indirectbr" <+>
     pp_type (typed.type d) <+> pp_value (typed.value d) <> comma <+>
-    commas (list.map pp_typed_label ls)
+    commas (List.map pp_typed_label ls)
 | (instruction.switch c d ls) :=
     text "switch" <+>
     pp_type (typed.type c) <+> pp_value (typed.value c) <> comma <+>
     pp_typed_label d <+>
-    brackets (hcat (list.map (pp_switch_entry (typed.type c)) ls))
+    brackets (hcat (List.map (pp_switch_entry (typed.type c)) ls))
 | (instruction.landing_pad ty mfn c cs) :=
     text "landingpad" <+> pp_type ty <>
     pp_opt (λv, text " personality" <+> pp_type (typed.type v) <+> pp_value (typed.value v)) mfn <+>
@@ -536,18 +535,17 @@ def pp_instr : instruction → doc
 
 def pp_stmt (s:stmt) : doc :=
   text "    " <>
-  (match s.assign with
-   | none   := pp_instr s.instr
-   | some i := pp_ident i <+> text "=" <+> pp_instr s.instr
-   end)
+  match s.assign with
+  | none :=  (pp_instr s.instr)
+  | (some i) := pp_ident i <+> text "=" <+> pp_instr s.instr
    --  <>   pp_attached_metadata s.metadata
 .
 
 def pp_basic_block (bb:basic_block) : doc :=
-  vcat ([ pp_opt pp_label bb.label ] ++ list.map pp_stmt bb.stmts)
+  vcat ([ pp_opt pp_label bb.label ] ++ List.map pp_stmt bb.stmts)
 .
 
-def pp_comdat_name (nm:string) : doc :=
+def pp_comdat_name (nm:String) : doc :=
   text "comdat" <> parens (text "$" <> text nm)
 .
 
@@ -586,8 +584,8 @@ def pp_declare (d:declare) : doc :=
   text "declare" <+>
   pp_type d.ret_type <+>
   pp_symbol d.name <>
-  pp_arg_list d.var_args (list.map pp_type d.args) <+>
-  hsep (list.map pp_fun_attr d.attrs) <>
+  pp_arg_list d.var_args (List.map pp_type d.args) <+>
+  hsep (List.map pp_fun_attr d.attrs) <>
   pp_opt (λnm, text " " <> pp_comdat_name nm) d.comdat
 .
 
@@ -636,7 +634,7 @@ def pp_global_alias (ga:global_alias) : doc :=
   (match ga.target with
    | (value.symbol _) := pp_type ga.type <> text " "
    | _ := empty
-   end) <>
+  ) <>
   pp_value ga.target
 .
 
@@ -652,23 +650,23 @@ def pp_define (d:define) : doc :=
   pp_opt pp_linkage d.linkage <+>
   pp_type d.ret_type <+>
   pp_symbol d.name <>
-  pp_arg_list d.var_args (list.map (λ a, pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args) <+>
-  hsep (list.map pp_fun_attr d.attrs) <>
+  pp_arg_list d.var_args (List.map (λ a, pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args) <+>
+  hsep (List.map pp_fun_attr d.attrs) <>
   pp_opt (λs, text " section" <+> pp_string_literal s) d.sec <>
   pp_opt (λg, text " gc" <+> pp_gc g) d.gc <+>
   -- pp_mds d.metadata <+>
-  vcat ([ text "{" ] ++ list.map pp_basic_block d.body ++ [ text "}" ])
+  vcat ([ text "{" ] ++ List.map pp_basic_block d.body ++ [ text "}" ])
 .
 
 def pp_module (m:module) : doc :=
   pp_opt (λnm, text "source_filename = " <> pp_string_literal nm) m.source_name $+$
   text "target datalayout = " <> dquotes (pp_layout m.data_layout) $+$
-  vcat (list.join
-  [ list.map pp_type_decl m.types
-  , list.map pp_global m.globals
-  , list.map pp_global_alias m.aliases
-  , list.map pp_declare m.declares
-  , list.map pp_define m.defines
+  vcat (List.join
+  [ List.map pp_type_decl m.types
+  , List.map pp_global m.globals
+  , List.map pp_global_alias m.aliases
+  , List.map pp_declare m.declares
+  , List.map pp_define m.defines
   -- , list.map pp_named_md m.named_md
   -- , list.map pp_unnamed_md m.unnamed_md
   -- , list.map pp_comdat m.comdat

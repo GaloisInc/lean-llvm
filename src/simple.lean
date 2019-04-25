@@ -1,5 +1,5 @@
-import data.rbmap
-import system.io
+import init.data.rbmap
+import init.io
 
 import .ast
 import .pp
@@ -46,7 +46,6 @@ module.mk
 []
 []
 
-def main : io unit :=
-  io.put_str (pp.render (pp_module simple_module))
+def main : IO Unit :=
+  IO.println (pp.render (pp_module simple_module))
 
-#eval main
