@@ -12,11 +12,8 @@
 
 using namespace lean;
 
-
-
 ////////////////////////////////////////////////////////////////////////
 // Copied from io.cpp
-
 
 extern obj_res const REAL_WORLD = box(0);
 
