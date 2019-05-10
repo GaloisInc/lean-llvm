@@ -1,0 +1,14 @@
+This is some sample code that uses the LLVM API from a Lean program.
+
+The purpose of the program is just to test feasiblity.  All the
+program does is load a bitcode file, print out the module name, and
+then set the module name to verify that could be done.
+
+The only change made to Lean was to drop the static qualifier from
+REAL_WORLD in `io.cpp`, but that probably isn't strictly necessary.
+
+For further details, the following files may be of interest:
+
+dump_llvm.lean: Contains all the lean code in the same program
+llvm_exports.cpp: Contains all the C++ code
+build.sh: A bash script for building the C++ and Lean code.
