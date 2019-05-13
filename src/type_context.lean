@@ -91,21 +91,21 @@ partial def lift_sym_type (lift_mem_type : llvm_type → Option mem_type) (tds:L
 partial def lift_mem_type (tds:List type_decl) : llvm_type → Option mem_type
 | (llvm_type.prim_type pt) :=
    (match pt with
-    | prim_type.label      := none
-    | prim_type.void       := none
-    | prim_type.integer n  := some (mem_type.int n)
-    | prim_type.metadata   := some mem_type.metadata
-    | prim_type.float_type _ := none
-    | prim_type.x86mmx     := none)
-
-| (llvm_type.alias i) := lookup_td tds i >>= lift_mem_type
-| llvm_type.opaque := none
-| (llvm_type.struct fs) := mem_type.struct <$> (List.mmap lift_mem_type fs)
+    | prim_type.integer n      := some (mem_type.int n)
+    | prim_type.metadata       := some mem_type.metadata
+    | prim_type.label          := none
+    | prim_type.void           := none
+    | prim_type.float_type _   := none
+    | prim_type.x86mmx         := none)
+| (llvm_type.ptr_to tp)        := some (mem_type.ptr (lift_sym_type lift_mem_type tds tp))
+| (llvm_type.alias i)          := lookup_td tds i >>= lift_mem_type
+| (llvm_type.struct fs)        := mem_type.struct <$> (List.mmap lift_mem_type fs)
 | (llvm_type.packed_struct fs) := mem_type.packed_struct <$> (List.mmap lift_mem_type fs)
-| (llvm_type.ptr_to tp)    := some (mem_type.ptr (lift_sym_type lift_mem_type tds tp))
-| (llvm_type.array n tp)   := mem_type.array n <$> lift_mem_type tp
-| (llvm_type.vector n tp)  := mem_type.vector n <$> lift_mem_type tp 
-| (llvm_type.fun_ty _ _ _) := none
+| (llvm_type.array n tp)       := mem_type.array n <$> lift_mem_type tp
+| (llvm_type.vector n tp)      := mem_type.vector n <$> lift_mem_type tp 
+| (llvm_type.fun_ty _ _ _)     := none
+| llvm_type.opaque             := none
 .
+
 
 end llvm.
