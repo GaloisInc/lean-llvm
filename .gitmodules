@@ -4,3 +4,6 @@
 [submodule "pretty-shim/deps/llvm-pretty-bc-parser"]
 	path = pretty-shim/deps/llvm-pretty-bc-parser
 	url = git@github.com:GaloisInc/llvm-pretty-bc-parser
+[submodule "reopt-vcg"]
+	path = reopt-vcg
+	url = git@github.com:GaloisInc/reopt-vcg.git
