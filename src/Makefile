@@ -1,28 +1,34 @@
 
 LEAN_HOME=$(HOME)/code/lean4
+LLVM_HOME=$(HOME)/build/llvm-8.0.0.src/
+CLANG=clang++
 
 SOURCES := ast.lean\
   pp.lean\
-  type_context.lean\
-  simple.lean
+  type_context.lean
 
 OLEAN=$(SOURCES:.lean=.olean)
 CPP=$(SOURCES:.lean=.cpp)
 OBJS=$(SOURCES:.cpp=.o)
 
-simple:	$(CPP) $(OLEAN)
-	clang++ -std=c++14 -D LEAN_MULTI_THREAD -pthread -fPIC -I$(LEAN_HOME)/src -L$(LEAN_HOME)/build/release -L$(LEAN_HOME)/build/release/stage1 -ldl -lleanstatic -lleanstdlib -lgmp -o $@ $(CPP)
+all : test simple
+
+test : $(CPP) $(OLEAN) llvm_exports.cpp llvm_lib.cpp
+	$(LEAN_HOME)/bin/leanc -O3 -o "test" llvm_lib.cpp llvm_exports.cpp -L$(LLVM_HOME)/build/lib -I$(LLVM_HOME)/include -I$(LLVM_HOME)/build/include -I$(LEAN_HOME)/src -I$(LEAN_HOME)/src/runtime -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader $(CPP)
+
+simple:	$(CPP) $(OLEAN) simple.cpp
+	$(LEAN_HOME)/bin/leanc -O3 -o "simple" simple.cpp $(CPP)
 
 %.cpp:	%.lean %.olean
-	lean -c $@ $<
+	$(LEAN_HOME)/bin/lean -c $@ $<
 
 %.olean: %.lean
-	lean --make $<
+	$(LEAN_HOME)/bin/lean --make $<
 
 clean:
-	- rm *.cpp
+	- rm $(CPP)
 	- rm *.o
 	- rm *.olean
 
 
-.PHONY : clean
+.PHONY : clean all
