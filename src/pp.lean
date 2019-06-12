@@ -542,7 +542,7 @@ def pp_stmt (s:stmt) : doc :=
 .
 
 def pp_basic_block (bb:basic_block) : doc :=
-  vcat ([ pp_opt pp_label bb.label ] ++ List.map pp_stmt bb.stmts)
+  vcat ([ pp_opt (λ l, pp_label l <> text ":") bb.label ] ++ List.map pp_stmt bb.stmts.toList)
 .
 
 def pp_comdat_name (nm:String) : doc :=
@@ -584,8 +584,8 @@ def pp_declare (d:declare) : doc :=
   text "declare" <+>
   pp_type d.ret_type <+>
   pp_symbol d.name <>
-  pp_arg_list d.var_args (List.map pp_type d.args) <+>
-  hsep (List.map pp_fun_attr d.attrs) <>
+  pp_arg_list d.var_args (List.map pp_type d.args.toList) <+>
+  hsep (List.map pp_fun_attr d.attrs.toList) <>
   pp_opt (λnm, text " " <> pp_comdat_name nm) d.comdat
 .
 
@@ -650,23 +650,23 @@ def pp_define (d:define) : doc :=
   pp_opt pp_linkage d.linkage <+>
   pp_type d.ret_type <+>
   pp_symbol d.name <>
-  pp_arg_list d.var_args (List.map (λ a, pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args) <+>
-  hsep (List.map pp_fun_attr d.attrs) <>
+  pp_arg_list d.var_args (List.map (λ a, pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args.toList) <+>
+  hsep (List.map pp_fun_attr d.attrs.toList) <>
   pp_opt (λs, text " section" <+> pp_string_literal s) d.sec <>
   pp_opt (λg, text " gc" <+> pp_gc g) d.gc <+>
   -- pp_mds d.metadata <+>
-  vcat ([ text "{" ] ++ List.map pp_basic_block d.body ++ [ text "}" ])
+  vcat ([ text "{" ] ++ List.map pp_basic_block d.body.toList ++ [ text "}" ])
 .
 
 def pp_module (m:module) : doc :=
   pp_opt (λnm, text "source_filename = " <> pp_string_literal nm) m.source_name $+$
   text "target datalayout = " <> dquotes (pp_layout m.data_layout) $+$
   vcat (List.join
-  [ List.map pp_type_decl m.types
-  , List.map pp_global m.globals
-  , List.map pp_global_alias m.aliases
-  , List.map pp_declare m.declares
-  , List.map pp_define m.defines
+  [ List.map pp_type_decl m.types.toList
+  , List.map pp_global m.globals.toList
+  , List.map pp_global_alias m.aliases.toList
+  , List.map pp_declare m.declares.toList
+  , List.map pp_define m.defines.toList
   -- , list.map pp_named_md m.named_md
   -- , list.map pp_unnamed_md m.unnamed_md
   -- , list.map pp_comdat m.comdat

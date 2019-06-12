@@ -366,9 +366,9 @@ inductive fun_attr
 structure declare :=
   ( ret_type : llvm_type      )
   ( name     : symbol        )
-  ( args     : List llvm_type )
+  ( args     : Array llvm_type )
   ( var_args : Bool          )
-  ( attrs    : List fun_attr  )
+  ( attrs    : Array fun_attr  )
   ( comdat   : Option String )
 
 structure GC := (gc : String).
@@ -376,22 +376,22 @@ structure GC := (gc : String).
 structure stmt :=
   (assign : Option ident)
   (instr : instruction)
-  (metadata : (List (String × val_md)))
+  (metadata : (Array (String × val_md)))
 
 structure basic_block :=
   ( label : Option block_label )
-  ( stmts : List stmt )
+  ( stmts : Array stmt )
 
 structure define :=
   ( linkage  : Option linkage  )
   ( ret_type : llvm_type       )
   ( name     : symbol         )
-  ( args     : List (typed ident)  )
+  ( args     : Array (typed ident)  )
   ( var_args : Bool           )
-  ( attrs    : List fun_attr   )
+  ( attrs    : Array fun_attr   )
   ( sec      : Option String  )
   ( gc       : Option GC      )
-  ( body     : List basic_block)
+  ( body     : Array basic_block)
   ( metadata : strmap val_md)
   ( comdat   : Option String   )
 
@@ -404,15 +404,15 @@ structure global_alias :=
 structure module :=
   ( source_name : Option String  )
   ( data_layout : data_layout    ) -- ^ type size and alignment information
-  ( types       : List type_decl    ) -- ^ top-level type aliases
-  ( named_md    : List named_md     )
-  ( unnamed_md  : List unnamed_md   )
+  ( types       : Array type_decl    ) -- ^ top-level type aliases
+  ( named_md    : Array named_md     )
+  ( unnamed_md  : Array unnamed_md   )
   ( comdat      : strmap selection_kind)
-  ( globals     : List global   ) -- ^ global value declarations
-  ( declares    : List declare  ) -- ^ external function declarations (without definitions)
-  ( defines     : List define   ) -- ^ internal function declarations (with definitions)
-  ( inline_asm  : List String   )
-  ( aliases     : List global_alias )
+  ( globals     : Array global   ) -- ^ global value declarations
+  ( declares    : Array declare  ) -- ^ external function declarations (without definitions)
+  ( defines     : Array define   ) -- ^ internal function declarations (with definitions)
+  ( inline_asm  : Array String   )
+  ( aliases     : Array global_alias )
 
 -- DWARF Debug Info ------------------------------------------------------------
 /-
