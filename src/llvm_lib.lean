@@ -38,6 +38,10 @@ inductive value_decomposition
 | constant_value : LLVMConstant -> value_decomposition
 .
 
+inductive branch_decomposition
+| unconditional : BasicBlock → branch_decomposition
+| conditional : LLVMValue → BasicBlock → BasicBlock → branch_decomposition.
+
 /-- This constructs a LLVM Context and frees it when done. -/
 @[extern 1 cpp "lean_llvm::newLLVMContext"]
 constant newLLVMContext : IO LLVMContext := default _
@@ -130,10 +134,13 @@ def getSelectInstData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue ×
 @[extern 2 cpp "lean_llvm::getConstIntData"]
 def getConstIntData : @& LLVMConstant -> IO (Option (ℕ × ℕ)) := default _
 
-namespace llvm.
+@[extern 2 cpp "lean_llvm::getBranchInstData"]
+def getBranchInstData : @& Instruction -> IO (Option branch_decomposition) := default _
 
-def anonIdent (n:ℕ) : ident :=
-  ident.mk (Nat.toDigits 10 n).asString.
+@[extern 2 cpp "lean_llvm::getPhiData"]
+def getPhiData : @& Instruction -> IO (Option (Array (LLVMValue × BasicBlock))) := default _
+
+namespace llvm.
 
 def typeIsVoid (tp : LLVMType) : IO Bool :=
   do id <-getTypeTag tp,
@@ -186,8 +193,8 @@ def extractArgs (fn : LLVMFunction) : IO (ℕ × Array (typed ident)) :=
            (counter, args) := b in
        do tp <- extractType rawtp,
           match mnm with
-          | none      := pure (counter+1, Array.push args (typed.mk tp (anonIdent counter)))
-          | (some nm) := pure (counter,   Array.push args (typed.mk tp (ident.mk nm)))
+          | none      := pure (counter+1, Array.push args (typed.mk tp (ident.anon counter)))
+          | (some nm) := pure (counter,   Array.push args (typed.mk tp (ident.named nm)))
      )
 .
 
@@ -195,7 +202,7 @@ def extractBBLabel (bb:BasicBlock) (c:ℕ) : IO (ℕ × block_label) :=
   do nm <- getBBName bb,
      match nm with
      | none      := pure (c+1, block_label.anon c)
-     | (some nm) := pure (c  , block_label.named (ident.mk nm)).
+     | (some nm) := pure (c  , block_label.named nm).
 
 def computeInstructionNumbering (rawbb:BasicBlock) (c0:ℕ) (imap0:instrMap) : IO (ℕ × instrMap) :=
   do instrarr <- getInstructionArray rawbb,
@@ -207,8 +214,8 @@ def computeInstructionNumbering (rawbb:BasicBlock) (c0:ℕ) (imap0:instrMap) : I
             if isv then pure (c,imap) else
             do mnm <- getInstructionName rawi,
                match mnm with
-               | (some nm) := pure (c, RBMap.insert imap rawi (ident.mk nm))
-               | none      := pure (c+1, RBMap.insert imap rawi (ident.mk (Nat.toDigits 10 c).asString))
+               | (some nm) := pure (c, RBMap.insert imap rawi (ident.named nm))
+               | none      := pure (c+1, RBMap.insert imap rawi (ident.anon c))
        ).
 
 def computeNumberings (c0:ℕ) (fn:LLVMFunction) : IO (bbMap × instrMap) :=
@@ -249,6 +256,12 @@ def extractValue (rawv:LLVMValue) (ctx:value_context) : IO value :=
      | _ := throw (IO.userError "unknown value")
 .
 
+def extractBlockLabel (bb:BasicBlock) (ctx:value_context) : IO block_label :=
+  match RBMap.find ctx.bmap bb with
+  | none := throw (IO.userError "unknown basic block")
+  | (some lab) := pure lab.
+
+
 def extractTypedValue (rawv:LLVMValue) (ctx:value_context) : IO (typed value) :=
   do tp <- getValueType rawv >>= extractType,
      v  <- extractValue rawv ctx,
@@ -264,7 +277,6 @@ def extractBinaryOp (rawInstr:Instruction) (ctx:value_context) (f:typed value �
         v2 <- extractTypedValue o2 ctx,
         pure (f v1 v2.value)
 .
-
 
 -- C.F. llvm/InstrTypes.h, enum Predicate
 def extractICmpOp (n:ℕ) : IO icmp_op :=
@@ -295,6 +307,20 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
                   do tyv <- extractTypedValue v ctx,
                      pure (instruction.ret tyv)
                )
+
+     -- br
+     | 2 :=
+        do d <- getBranchInstData rawinstr,
+           (match d with
+            | none := throw (IO.userError "expected branch instruction")
+            | (some (branch_decomposition.unconditional b)) :=
+                instruction.jump <$> extractBlockLabel b ctx
+            | (some (branch_decomposition.conditional c t f)) :=
+                do cv <- extractTypedValue c ctx,
+                   tl <- extractBlockLabel t ctx,
+                   fl <- extractBlockLabel f ctx,
+                   pure (instruction.br cv tl fl)
+            )
 
      -- == binary operators ==
      -- add
@@ -345,6 +371,18 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
                    o2 <- extractTypedValue v2 ctx,
                    op <- extractICmpOp code,
                    pure (instruction.icmp op o1 o2.value))
+
+     -- PHI
+     | 54 :=
+          do t <- getInstructionType rawinstr >>= extractType,
+             d <- getPhiData rawinstr,
+             (match d with
+              | none := throw (IO.userError "expected phi instruction")
+              | some vs := 
+                  do vs' <- Array.mmap (λvbb:(LLVMValue×BasicBlock),
+                             Prod.mk <$> extractValue vbb.1 ctx <*> extractBlockLabel vbb.2 ctx) vs,
+                     pure (instruction.phi t vs')
+              )
 
      -- select
      | 56 := 
@@ -403,27 +441,23 @@ def extractFunction (fn : LLVMFunction) : IO define :=
             none -- comdat
           ).
 
+def extractModule (m:Module) : IO module :=
+  do nm <- getModuleIdentifier m,
+     fns <- getFunctionArray m >>= Array.mmap extractFunction,
+     pure (module.mk 
+             (some nm)
+             [] -- datalayout TODO
+             Array.empty -- types TODO
+             Array.empty -- named_md TODO
+             Array.empty -- unnamed_md TODO
+             (strmap_empty _) -- comdat TODO
+             Array.empty -- globals TODO
+             Array.empty -- declares TODO
+             fns -- defines
+             Array.empty -- inline ASM TODO,
+             Array.empty -- global alises TODO
+           ).
+
 end llvm.
 
 
-def main (xs : List String) : IO UInt32 := do
-
-  ctx ← newLLVMContext,
-  mb ← newMemoryBufferFromFile xs.head,
-  m ← parseBitcodeFile mb ctx,
-
-  getModuleIdentifier m >>= IO.println,
-
-  setModuleIdentifier m "James",
-  getModuleIdentifier m >>= IO.println,
-
-  fl <- getFunctionArray m,
-
-  Array.miterate fl () (λ_i f _m,
-     do nm <- getFunctionName f,
-        dfn <- llvm.extractFunction f,
-        IO.println (pp.render (llvm.pp_define dfn))
-  ),
-
-  pure 0
-  

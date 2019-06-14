@@ -2,6 +2,7 @@ import init.control.functor
 import init.control.applicative
 import init.control.monad
 import init.control.combinators
+import init.data.array
 import init.data.list
 import init.data.rbmap
 import .ast
@@ -11,7 +12,7 @@ namespace llvm.
 mutual inductive sym_type, mem_type, fun_decl
 with sym_type : Type
   | mem_type : mem_type → sym_type
-  | ty_alias : ident → sym_type
+  | ty_alias : String → sym_type
   | fun_type : fun_decl → sym_type
   | void     : sym_type
   | opaque   : sym_type
@@ -36,15 +37,14 @@ with fun_decl : Type
 
 instance : Inhabited sym_type := ⟨sym_type.void⟩
 
-def lookup_td : List type_decl → ident → Option llvm_type
-| [] _ := none
-| (td :: tds) i :=
-   match decEq td.name.ident i.ident with
+def lookup_td (tds:Array type_decl) (i:String) : Option llvm_type :=
+  Array.find tds (λtd, 
+   match decEq td.name i with
    | Decidable.isTrue _  := some td.value
-   | Decidable.isFalse _ := lookup_td tds i
-.
+   | Decidable.isFalse _ := none
+   ).
 
-partial def lift_sym_type (lift_mem_type : llvm_type → Option mem_type) (tds:List type_decl) : llvm_type → sym_type
+partial def lift_sym_type (lift_mem_type : llvm_type → Option mem_type) (tds:Array type_decl) : llvm_type → sym_type
 | t@(llvm_type.prim_type pt) :=
      (match pt with
      | prim_type.label     := sym_type.unsupported t
@@ -88,7 +88,7 @@ partial def lift_sym_type (lift_mem_type : llvm_type → Option mem_type) (tds:L
       in Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.packed_struct)
 .
 
-partial def lift_mem_type (tds:List type_decl) : llvm_type → Option mem_type
+partial def lift_mem_type (tds:Array type_decl) : llvm_type → Option mem_type
 | (llvm_type.prim_type pt) :=
    (match pt with
     | prim_type.integer n      := some (mem_type.int n)
@@ -106,6 +106,5 @@ partial def lift_mem_type (tds:List type_decl) : llvm_type → Option mem_type
 | (llvm_type.fun_ty _ _ _)     := none
 | llvm_type.opaque             := none
 .
-
 
 end llvm.

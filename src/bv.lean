@@ -6,7 +6,11 @@ structure bv (w:ℕ) :=
   ( to_nat : ℕ )
   ( prop  : to_nat < 2^w )
 
-
+namespace bv.
+  def less {w:ℕ} (x y:bv w) := x.to_nat < y.to_nat.
+  instance bvHasLess {w:ℕ} : HasLess (bv w) := ⟨bv.less⟩.
+  def decLt {w:ℕ} (x y:bv w) : Decidable (x < y) := Nat.decLt x.to_nat y.to_nat.
+end bv.
 
 namespace Nat
 local infix `▹`:50 := Eq.trans. 
@@ -184,6 +188,11 @@ local infix `▹`:50 := Eq.trans.
 
 protected def from_nat (w:ℕ) (val:ℕ) : bv w :=
   ⟨val % 2^w, Nat.modLt val (Nat.posPowOfPos w rfl) ⟩.
+
+protected def from_int (w:ℕ) : Int → bv w
+| (Int.ofNat n)   := bv.from_nat w n
+| (Int.negSucc n) := let n' := (n % 2^(w-1))+1 in bv.from_nat w (2^w - n')
+.
 
 def bv_ext {w:ℕ} : Π{x y:bv w}, x.to_nat = y.to_nat → x = y
 | ⟨xv, xp⟩ ⟨_,yp⟩ rfl := rfl

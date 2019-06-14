@@ -15,7 +15,58 @@ def strmap_empty (a:Type) : strmap a := RBMap.empty
 
 -- Identifiers -----------------------------------------------------------------
 
-structure ident := (ident : String)
+inductive ident
+| named  : String → ident
+| anon : ℕ → ident
+.
+
+namespace ident.
+
+def asString : ident → String
+| (named nm) := "%" ++ nm
+| (anon i)   := "%" ++ (Nat.toDigits 10 i).asString
+.
+
+def lt : ident → ident → Prop
+| (ident.named x) (ident.named y) := x < y
+| (ident.named _) (ident.anon _)  := True
+| (ident.anon x)  (ident.anon y)  := x < y
+| (ident.anon _)  (ident.named _) := False
+.
+
+instance : HasLess ident := ⟨lt⟩.
+
+instance decideEq : Π(x y:ident), Decidable (x = y)
+| (ident.named a) (ident.named b) := 
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, ident.noConfusion H p)
+    )
+| (ident.anon a) (ident.anon b) :=
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, ident.noConfusion H p)
+    )
+| (ident.anon _) (ident.named _) := Decidable.isFalse (λH, ident.noConfusion H)
+| (ident.named _) (ident.anon _) := Decidable.isFalse (λH, ident.noConfusion H)
+
+
+instance decideLt : Π(x y:ident), Decidable (x < y)
+| (ident.named x) (ident.named y) := 
+  (match String.decLt x y with
+   | Decidable.isTrue p  := Decidable.isTrue p
+   | Decidable.isFalse p := Decidable.isFalse (λH, p H)
+   )
+| (ident.anon x) (ident.anon y) :=
+  (match Nat.decLt x y with
+   | Decidable.isTrue p  := Decidable.isTrue p
+   | Decidable.isFalse p := Decidable.isFalse (λH, p H)
+   )
+| (ident.named _) (ident.anon _)  := Decidable.isTrue True.intro
+| (ident.anon _)  (ident.named _) := Decidable.isFalse False.elim
+.
+
+end ident.
 
 -- Data Layout -----------------------------------------------------------------
 
@@ -72,7 +123,7 @@ inductive prim_type
 
 inductive llvm_type
   | prim_type : prim_type -> llvm_type
-  | alias : ident -> llvm_type
+  | alias : String -> llvm_type
   | array : ℕ -> llvm_type -> llvm_type
   | fun_ty : llvm_type -> List llvm_type -> Bool -> llvm_type
   | ptr_to : llvm_type -> llvm_type
@@ -84,7 +135,7 @@ inductive llvm_type
 -- Top-level Type Aliases ------------------------------------------------------
 
 structure type_decl :=
-  (name : ident)
+  (name : String)
   (value : llvm_type)
 
 -- Symbols ---------------------------------------------------------------------
@@ -92,8 +143,29 @@ structure type_decl :=
 structure symbol := (symbol : String)
 
 inductive block_label
-  | named : ident -> block_label
+  | named : String -> block_label
   | anon : ℕ -> block_label
+
+
+namespace block_label.
+
+instance decideEq : Π(x y:block_label), Decidable (x = y)
+| (block_label.named a) (block_label.named b) := 
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, block_label.noConfusion H p)
+    )
+| (block_label.anon a) (block_label.anon b) :=
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, block_label.noConfusion H p)
+    )
+| (block_label.anon _) (block_label.named _) := Decidable.isFalse (λH, block_label.noConfusion H)
+| (block_label.named _) (block_label.anon _) := Decidable.isFalse (λH, block_label.noConfusion H)
+.
+
+end block_label.
+
 
 structure typed (a : Type) :=
   ( type  : llvm_type )
@@ -255,7 +327,7 @@ inductive instruction : Type
 -/
   | icmp : icmp_op -> typed value -> value -> instruction
   | fcmp : fcmp_op -> typed value -> value -> instruction
-  | phi : llvm_type -> List (value × block_label) -> instruction
+  | phi : llvm_type -> Array (value × block_label) -> instruction
   | gep (bounds : Bool) : typed value -> List (typed value) -> instruction
   | select : typed value -> typed value -> value -> instruction
   | extract_value : typed value -> List ℕ -> instruction
@@ -379,7 +451,7 @@ structure stmt :=
   (metadata : (Array (String × val_md)))
 
 structure basic_block :=
-  ( label : Option block_label )
+  ( label : block_label )
   ( stmts : Array stmt )
 
 structure define :=

@@ -432,6 +432,64 @@ obj_res getCmpInstData( b_obj_arg i_obj, obj_arg r ) {
   return set_io_result( r, mk_option_none() );
 }
 
+obj_res getBranchInstData( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  BranchInst *bi = dyn_cast<BranchInst>(i);
+  if( bi ) {
+    if( bi->getNumSuccessors() == 1 ) {
+      obj_res b_obj = alloc_external( getTrivialObjectClass(), bi->getSuccessor(0) );
+
+      obj_res x = alloc_cnstr( 0, 1, 0 );
+      cnstr_set( x, 0, b_obj );
+
+      return set_io_result( r, mk_option_some( x ) );
+
+    } else if (bi->getNumSuccessors() == 2 ) {
+      obj_res x = alloc_cnstr( 1, 3, 0 );
+      
+      obj_res c_obj = alloc_external( getTrivialObjectClass(), bi->getCondition() );
+
+      obj_res t_obj = alloc_external( getTrivialObjectClass(), bi->getSuccessor(0) );
+      obj_res f_obj = alloc_external( getTrivialObjectClass(), bi->getSuccessor(1) );
+      
+      cnstr_set( x, 0, c_obj );
+      cnstr_set( x, 1, t_obj );
+      cnstr_set( x, 2, f_obj );
+
+      return set_io_result( r, mk_option_some( x ) );
+    }
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
+
+obj_res getPhiData( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  PHINode* phi = dyn_cast<PHINode>(i);
+  if( phi ) {
+    obj_res arr = alloc_array( 0, 0 );  
+
+    unsigned n = phi->getNumIncomingValues();
+    for( unsigned i = 0; i<n; i++ ) {
+      Value* v = phi->getIncomingValue(i);
+      BasicBlock* bb = phi->getIncomingBlock(i);
+      
+      obj_res v_obj = alloc_external( getTrivialObjectClass(), v );
+      obj_res bb_obj = alloc_external( getTrivialObjectClass(), bb );
+
+      obj_res pair = alloc_cnstr( 0, 2, 0 );
+      cnstr_set( pair, 0, v_obj );
+      cnstr_set( pair, 1, bb_obj );
+
+      arr = array_push( arr, pair );
+    }
+
+    return set_io_result( r, mk_option_some(arr) );
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
+
 
 obj_res getSelectInstData( b_obj_arg i_obj, obj_arg r ) {
   Instruction *i = static_cast<Instruction*>(external_data(i_obj));
@@ -569,9 +627,6 @@ obj_res decomposeValue( b_obj_arg v_obj, obj_arg r ) {
   
   return set_io_result( r, x );
 }
-
-
-
 
 
 

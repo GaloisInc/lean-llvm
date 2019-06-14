@@ -132,8 +132,9 @@ end layout_spec.
 -- FIXME! We need to handle escaping...
 def pp_string_literal : String → doc := dquotes ∘ text
 
-def pp_ident (n:ident) : doc :=
-  text "%" <> text (n.ident)  -- FIXME! deal with the 'validIdentifier' question
+def pp_ident : ident → doc
+| (ident.named nm) := text "%" <> text nm  -- FIXME! deal with the 'validIdentifier' question
+| (ident.anon i)   := text "%" <> to_doc i
 .
 
 def pp_symbol (n:symbol) : doc :=
@@ -141,8 +142,8 @@ def pp_symbol (n:symbol) : doc :=
 .
 
 def pp_label : block_label → doc
-| (block_label.named i) := pp_ident i
-| (block_label.anon n)  := text "%" <> to_doc n
+| (block_label.named nm) := text "%" <> text nm
+| (block_label.anon i)  := text "%" <> to_doc i
 .
 
 def packed_braces : doc → doc := surrounding "<{" "}>"
@@ -179,7 +180,7 @@ meta def pp_type_tac :=
 
 partial def pp_type : llvm_type → doc
 | (llvm_type.prim_type pt)       := pp_prim_type pt
-| (llvm_type.alias n)            := pp_ident n
+| (llvm_type.alias nm)           := text "%" <> text nm
 | (llvm_type.array len ty)       := brackets (int len <+> text "x" <+> pp_type ty)
 | (llvm_type.ptr_to ty)          := pp_type ty <> text "*"
 | (llvm_type.struct ts)          := braces (commas (List.map pp_type ts))
@@ -465,7 +466,7 @@ def pp_instr : instruction → doc
     pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+>
     pp_value y
 | (instruction.phi ty vls) :=
-    text "phi" <+> pp_type ty <+> commas (List.map pp_phi_arg vls)
+    text "phi" <+> pp_type ty <+> commas (List.map pp_phi_arg vls.toList)
 | (instruction.gep bounds base args) := pp_gep bounds base args
 | (instruction.select cond x y) :=
     text "select" <+>
@@ -639,7 +640,7 @@ def pp_global_alias (ga:global_alias) : doc :=
 .
 
 def pp_type_decl (t:type_decl) : doc :=
-  pp_ident t.name <+> text "= type" <+> pp_type t.value
+  text "%" <> text t.name <+> text "= type" <+> pp_type t.value
 .
 
 def pp_gc (x:GC) : doc := pp_string_literal x.gc
