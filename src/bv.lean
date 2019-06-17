@@ -1,6 +1,6 @@
 import init.data.nat
 import init.data.nat.div
-
+import init.data.nat.bitwise
 
 structure bv (w:ℕ) :=
   ( to_nat : ℕ )
@@ -216,6 +216,27 @@ def negate {w:ℕ} (x : bv w) : bv w :=
 
 def mul {w:ℕ} (x y : bv w) : bv w :=
   bv.from_nat w (x.to_nat * y.to_nat).
+
+def bitwise_and {w:ℕ} (x y: bv w) : bv w :=
+  bv.from_nat w (Nat.land x.to_nat y.to_nat).
+
+def bitwise_or {w:ℕ} (x y: bv w) : bv w :=
+  bv.from_nat w (Nat.lor x.to_nat y.to_nat).
+
+-- TODO, define/bind to efficent versions of these bitwise operations
+def bitwise_xor {w:ℕ} (x y:bv w) : bv w :=
+  bv.from_nat w (Nat.bitwise xor x.to_nat y.to_nat).
+
+def shl {w:ℕ} (x y: bv w) : bv w :=
+  bv.from_nat w (x.to_nat * (2 ^ y.to_nat)).
+
+def lshr {w:ℕ} (x y:bv w) : bv w :=
+  bv.from_nat w (x.to_nat / (2 ^ y.to_nat)).
+
+def ashr {w:ℕ} (x y:bv w) : bv w :=
+  bv.from_int w (x.to_int / Int.ofNat (2 ^ y.to_nat)).
+
+
 
 def bv_mod_eq (w:ℕ) (x y:ℕ) : Nat.mod_eq (2^w) x y → bv.from_nat w x = bv.from_nat w y := 
   bv_ext ∘ Nat.mod_eq_eq (2^w) x y.

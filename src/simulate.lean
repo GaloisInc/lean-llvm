@@ -194,6 +194,19 @@ def eval_icmp (op:icmp_op) : runtime_value → runtime_value → sim runtime_val
     | icmp_op.isgt := if a.to_int >  b.to_int then t else f
   ).
 
+
+def eval_bit (op:bit_op) : runtime_value → runtime_value → sim runtime_value :=
+  int_op (λw a b,
+    match op with
+    | bit_op.and  := pure (runtime_value.int w (@bv.bitwise_and w a b))
+    | bit_op.or   := pure (runtime_value.int w (@bv.bitwise_or w a b))
+    | bit_op.xor  := pure (runtime_value.int w (@bv.bitwise_xor w a b))
+    | (bit_op.shl uov sov) := pure (runtime_value.int w (@bv.shl w a b))
+    | (bit_op.lshr exact)  := pure (runtime_value.int w (@bv.lshr w a b))
+    | (bit_op.ashr exact)  := pure (runtime_value.int w (@bv.ashr w a b))
+  ).
+
+
 def phi (t:mem_type) (prv:block_label) : List (value × block_label) → sim runtime_value
 | [] := throw (IO.userError "phi node not defined for predecessor node")
 | ((v,l)::xs) := if prv = l then eval t v else phi xs
@@ -216,6 +229,12 @@ def evalInstr : instruction → sim (Option runtime_value)
         xv <- eval t x.value,
         yv <- eval t y,
         some <$> eval_arith op xv yv
+
+| (instruction.bit op x y) :=
+     do t  <- eval_mem_type x.type,
+        xv <- eval t x.value,
+        yv <- eval t y,
+        some <$> eval_bit op xv yv
 
 | (instruction.icmp op x y) :=
      do t  <- eval_mem_type x.type,

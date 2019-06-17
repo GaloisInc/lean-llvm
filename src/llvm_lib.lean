@@ -361,6 +361,26 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
      -- frem
      | 23 := extractBinaryOp rawinstr ctx (instruction.arith arith_op.frem)
 
+     -- shl
+     | 24 :=
+         do uov <- hasNoUnsignedWrap rawinstr,
+            sov <- hasNoSignedWrap rawinstr,
+            extractBinaryOp rawinstr ctx (instruction.bit (bit_op.shl uov sov))
+     -- lshr
+     | 25 :=
+         do ex <- isExact rawinstr,
+            extractBinaryOp rawinstr ctx (instruction.bit (bit_op.lshr ex))
+     -- ashr
+     | 26 :=
+         do ex <- isExact rawinstr,
+            extractBinaryOp rawinstr ctx (instruction.bit (bit_op.ashr ex))
+     -- and
+     | 27 := extractBinaryOp rawinstr ctx (instruction.bit bit_op.and)
+     -- or
+     | 28 := extractBinaryOp rawinstr ctx (instruction.bit bit_op.or)
+     -- xor
+     | 29 := extractBinaryOp rawinstr ctx (instruction.bit bit_op.xor)
+
      -- icmp
      | 52 := 
           do d <- getCmpInstData rawinstr,
