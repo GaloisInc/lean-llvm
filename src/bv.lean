@@ -194,6 +194,13 @@ protected def from_int (w:ℕ) : Int → bv w
 | (Int.negSucc n) := let n' := (n % 2^(w-1))+1 in bv.from_nat w (2^w - n')
 .
 
+protected def to_int {w} (x:bv w) : Int :=
+  if x.to_nat < 2^(w-1) then
+    Int.ofNat x.to_nat
+  else
+    Int.ofNat x.to_nat - Int.ofNat (2^w)
+.
+
 def bv_ext {w:ℕ} : Π{x y:bv w}, x.to_nat = y.to_nat → x = y
 | ⟨xv, xp⟩ ⟨_,yp⟩ rfl := rfl
 .

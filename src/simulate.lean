@@ -180,17 +180,19 @@ def eval_icmp (op:icmp_op) : runtime_value → runtime_value → sim runtime_val
     let t := (pure (runtime_value.int 1 (bv.from_nat 1 1)) : sim runtime_value) in
     let f := (pure (runtime_value.int 1 (bv.from_nat 1 0)) : sim runtime_value) in
     match op with
-    | icmp_op.ieq  := if a.to_nat  = b.to_nat then t else f
+    | icmp_op.ieq  := if a.to_nat =  b.to_nat then t else f
     | icmp_op.ine  := if a.to_nat != b.to_nat then t else f
+
     | icmp_op.iule := if a.to_nat <= b.to_nat then t else f
     | icmp_op.iult := if a.to_nat <  b.to_nat then t else f
     | icmp_op.iuge := if a.to_nat >= b.to_nat then t else f
     | icmp_op.iugt := if a.to_nat >  b.to_nat then t else f
 
---    | icmp_op.islt := if a.to_int <= b.to_int then t else f
-
-    | _ := throw (IO.userError "NYI: eval_icmp")
-  )
+    | icmp_op.isle := if a.to_int <= b.to_int then t else f
+    | icmp_op.islt := if a.to_int <  b.to_int then t else f
+    | icmp_op.isge := if a.to_int >= b.to_int then t else f
+    | icmp_op.isgt := if a.to_int >  b.to_int then t else f
+  ).
 
 def phi (t:mem_type) (prv:block_label) : List (value × block_label) → sim runtime_value
 | [] := throw (IO.userError "phi node not defined for predecessor node")
@@ -206,9 +208,7 @@ def evalInstr : instruction → sim (Option runtime_value)
         t  <- eval_mem_type tp,
         (match frm.prev with
          | none := throw (IO.userError "phi nodes not allowed in entry block")
-         | (some prv) := 
-              do sim.io (IO.println ("PHI: " ++ (pp.render (pp_label prv <+> pp_instr (instruction.phi tp xs))))),
-                 some <$> phi t prv xs.toList
+         | (some prv) := some <$> phi t prv xs.toList
         )
 
 | (instruction.arith op x y) :=
