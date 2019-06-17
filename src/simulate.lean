@@ -15,10 +15,10 @@ inductive runtime_value
 .
 
 @[reducible]
-def memMap := @RBMap (bv 64) (bv 8) (λx y, @toBool _ (bv.decLt x y))
+def memMap := @RBMap (bv 64) (bv 8) (λx y, decide (x < y)).
 
 @[reducible]
-def regMap := @RBMap ident runtime_value (λx y, @toBool _ (ident.decideLt x y)).
+def regMap := @RBMap ident runtime_value (λx y, decide (x < y)).
 
 structure frame :=
   (locals : regMap)
@@ -82,7 +82,7 @@ instance hasBind : HasBind sim :=
 instance applicative : Applicative sim := Applicative.mk _.
 instance monad : Monad sim := Monad.mk _.
 
-instance monadExcept : MonadExcept IO.error sim :=
+instance monadExcept : MonadExcept IO.Error sim :=
   { throw := λa err, sim.mk (λz _kret _kcall _kjump _k _frm _st, throw err) 
   , catch := λa m handle, sim.mk (λz kret kcall kjump k frm st,
        catch (m.runSim z kret kcall kjump k frm st) 
@@ -217,18 +217,18 @@ def evalInstr : instruction → sim (Option runtime_value)
         yv <- eval t y,
         some <$> eval_arith op xv yv
 
+| (instruction.icmp op x y) :=
+     do t  <- eval_mem_type x.type,
+        xv <- eval t x.value,
+        yv <- eval t y,
+        some <$> eval_icmp op xv yv
+
 | (instruction.select c x y) :=
      do cv <- eval_typed c >>= asPred,
         t  <- eval_mem_type x.type,
         xv <- eval t x.value,
         yv <- eval t y,
         if cv then pure (some xv) else pure (some yv)
-
-| (instruction.icmp op x y) :=
-     do t  <- eval_mem_type x.type,
-        xv <- eval t x.value,
-        yv <- eval t y,
-        some <$> eval_icmp op xv yv
 
 | (instruction.call _tail tp fn args) :=
      do t <- eval_mem_type tp,
@@ -257,7 +257,7 @@ def evalStmt (s:stmt) : sim Unit :=
 .
 
 def evalStmts (stmts:Array stmt) : sim Unit :=
-  Array.mfoldl stmts Unit.unit (λs _, evalStmt s)
+  Array.mfoldl (λ_ s, evalStmt s) Unit.unit stmts.
 
 def findBlock (l:block_label) (func:define) : IO (Array stmt) :=
   match Array.find func.body (λbb,

@@ -10,7 +10,8 @@ namespace llvm
 -- def float : Type 0 := sorry
 -- def double : Type 0 := sorry
 
-def strmap (a:Type) := @RBMap String a (λx y, @toBool _ (String.decLt x y))
+
+def strmap (a:Type) := @RBMap String a (λx y, decide (x < y))
 def strmap_empty (a:Type) : strmap a := RBMap.empty
 
 -- Identifiers -----------------------------------------------------------------

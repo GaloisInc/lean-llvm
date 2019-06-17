@@ -9,7 +9,7 @@ structure bv (w:ℕ) :=
 namespace bv.
   def less {w:ℕ} (x y:bv w) := x.to_nat < y.to_nat.
   instance bvHasLess {w:ℕ} : HasLess (bv w) := ⟨bv.less⟩.
-  def decLt {w:ℕ} (x y:bv w) : Decidable (x < y) := Nat.decLt x.to_nat y.to_nat.
+  instance decLt {w:ℕ} (x y:bv w) : Decidable (x < y) := Nat.decLt x.to_nat y.to_nat.
 end bv.
 
 namespace Nat
