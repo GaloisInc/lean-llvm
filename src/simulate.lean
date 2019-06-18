@@ -206,6 +206,30 @@ def eval_bit (op:bit_op) : runtime_value → runtime_value → sim runtime_value
     | (bit_op.ashr exact)  := pure (runtime_value.int w (@bv.ashr w a b))
   ).
 
+def eval_conv : conv_op → mem_type → runtime_value → mem_type → sim runtime_value
+| conv_op.trunc (mem_type.int w1) (runtime_value.int wx x) (mem_type.int w2) :=
+    if w1 = wx ∧ w1 >= w2 then
+      pure (runtime_value.int w2 (bv.from_nat w2 x.to_nat))
+    else
+      throw (IO.userError "invalid trunc operation")
+| conv_op.trunc _ _ _ := throw (IO.userError "invalid trunc operation")
+
+| conv_op.zext (mem_type.int w1) (runtime_value.int wx x) (mem_type.int w2) :=
+    if w1 = wx ∧ w1 <= w2 then
+      pure (runtime_value.int w2 (bv.from_nat w2 x.to_nat))
+    else
+      throw (IO.userError "invalid zext operation")
+| conv_op.zext _ _ _ := throw (IO.userError "invalid zext operation")
+
+| conv_op.sext (mem_type.int w1) (runtime_value.int wx x) (mem_type.int w2) :=
+    if w1 = wx ∧ w1 <= w2 then
+      pure (runtime_value.int w2 (bv.from_int w2 x.to_int))
+    else
+      throw (IO.userError "invalid sext operation")
+| conv_op.sext _ _ _ := throw (IO.userError "invalid sext operation")
+
+| _ _ _ _ := throw (IO.userError "NYI: conversion op")
+
 
 def phi (t:mem_type) (prv:block_label) : List (value × block_label) → sim runtime_value
 | [] := throw (IO.userError "phi node not defined for predecessor node")
@@ -235,6 +259,12 @@ def evalInstr : instruction → sim (Option runtime_value)
         xv <- eval t x.value,
         yv <- eval t y,
         some <$> eval_bit op xv yv
+
+| (instruction.conv op x outty) :=
+     do t  <- eval_mem_type x.type,
+        xv <- eval t x.value,
+        t' <- eval_mem_type outty,
+        some <$> eval_conv op t xv t'
 
 | (instruction.icmp op x y) :=
      do t  <- eval_mem_type x.type,

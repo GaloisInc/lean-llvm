@@ -31,7 +31,7 @@ constant Instruction := Unit
 constant LLVMValue := Unit
 constant LLVMConstant := Unit
 
-inductive value_decomposition 
+inductive value_decomposition
 | unknown_value  : value_decomposition
 | argument_value : ℕ -> value_decomposition
 | instruction_value : Instruction -> value_decomposition
@@ -140,6 +140,9 @@ def getBranchInstData : @& Instruction -> IO (Option branch_decomposition) := de
 @[extern 2 cpp "lean_llvm::getPhiData"]
 def getPhiData : @& Instruction -> IO (Option (Array (LLVMValue × BasicBlock))) := default _
 
+@[extern 2 cpp "lean_llvm::getCastInstData"]
+def getCastInstData : @& Instruction -> IO (Option (ℕ × LLVMValue)) := default _
+
 namespace llvm.
 
 def typeIsVoid (tp : LLVMType) : IO Bool :=
@@ -188,7 +191,7 @@ structure value_context :=
 
 def extractArgs (fn : LLVMFunction) : IO (ℕ × Array (typed ident)) :=
   do rawargs <- getFunctionArgs fn,
-     Array.miterate rawargs (0, Array.empty) (λ_ a b, 
+     Array.miterate rawargs (0, Array.empty) (λ_ a b,
        let (mnm, rawtp) := a,
            (counter, args) := b in
        do tp <- extractType rawtp,
@@ -222,7 +225,7 @@ def computeNumberings (c0:ℕ) (fn:LLVMFunction) : IO (bbMap × instrMap) :=
   do bbarr <- getBasicBlockArray fn,
      (_,finalbmap, finalimap) <-
        Array.miterate bbarr (c0, (RBMap.empty : bbMap), (RBMap.empty : instrMap))
-         (λ_ rawbb st, 
+         (λ_ rawbb st,
             let (c, bmap, imap) := st in
             do (c', blab) <- extractBBLabel rawbb c,
                bmap' <- pure (RBMap.insert bmap rawbb blab),
@@ -251,7 +254,7 @@ def extractValue (rawv:LLVMValue) (ctx:value_context) : IO value :=
         | (some i) := pure (value.ident i)
        )
 
-     | (value_decomposition.constant_value c) := extractConstant c 
+     | (value_decomposition.constant_value c) := extractConstant c
 
      | _ := throw (IO.userError "unknown value")
 .
@@ -272,11 +275,20 @@ def extractBinaryOp (rawInstr:Instruction) (ctx:value_context) (f:typed value �
   getBinaryOperatorValues rawInstr >>= λx,
   match x with
   | none := throw (IO.userError "expected binary operation")
-  | (some (o1,o2)) := 
+  | (some (o1,o2)) :=
      do v1 <- extractTypedValue o1 ctx,
         v2 <- extractTypedValue o2 ctx,
         pure (f v1 v2.value)
 .
+
+def extractCastOp (rawinstr:Instruction) (ctx:value_context) (f:typed value → llvm_type → instruction) : IO instruction :=
+  getCastInstData rawinstr >>= λx,
+  match x with
+  | none := throw (IO.userError "expected conversion instruction")
+  | (some (_op, v)) :=
+      do tv <- extractTypedValue v ctx,
+         outty <- getInstructionType rawinstr >>= extractType,
+         pure (f tv outty)
 
 -- C.F. llvm/InstrTypes.h, enum Predicate
 def extractICmpOp (n:ℕ) : IO icmp_op :=
@@ -294,7 +306,7 @@ def extractICmpOp (n:ℕ) : IO icmp_op :=
   | _  := throw (IO.userError ("unexpected icmp operation: " ++ (Nat.toDigits 10 n).asString))
 .
 
-def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instruction := 
+def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instruction :=
   do op <- getInstructionOpcode rawinstr,
      tp <- getInstructionType rawinstr >>= extractType,
      match op with
@@ -303,7 +315,7 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
      | 1 := do mv <- getInstructionReturnValue rawinstr,
                (match mv with
                 | none := pure instruction.ret_void
-                | (some v) := 
+                | (some v) :=
                   do tyv <- extractTypedValue v ctx,
                      pure (instruction.ret tyv)
                )
@@ -322,16 +334,19 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
                    pure (instruction.br cv tl fl)
             )
 
+     -- unreachable
+     | 7 := pure instruction.unreachable
+
      -- == binary operators ==
      -- add
-     | 12 := 
+     | 12 :=
         do uov <- hasNoUnsignedWrap rawinstr,
            sov <- hasNoSignedWrap rawinstr,
            extractBinaryOp rawinstr ctx (instruction.arith (arith_op.add uov sov))
      -- fadd
      | 13 := extractBinaryOp rawinstr ctx (instruction.arith arith_op.fadd)
      -- sub
-     | 14 := 
+     | 14 :=
         do uov <- hasNoUnsignedWrap rawinstr,
            sov <- hasNoSignedWrap rawinstr,
            extractBinaryOp rawinstr ctx (instruction.arith (arith_op.sub uov sov))
@@ -342,13 +357,13 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
         do uov <- hasNoUnsignedWrap rawinstr,
            sov <- hasNoSignedWrap rawinstr,
            extractBinaryOp rawinstr ctx (instruction.arith (arith_op.mul uov sov))
-     -- fmul 
+     -- fmul
      | 17 := extractBinaryOp rawinstr ctx (instruction.arith arith_op.fmul)
      -- udiv
      | 18 :=
         do ex <- isExact rawinstr,
            extractBinaryOp rawinstr ctx (instruction.arith (arith_op.udiv ex))
-     -- sdiv 
+     -- sdiv
      | 19 :=
         do ex <- isExact rawinstr,
            extractBinaryOp rawinstr ctx (instruction.arith (arith_op.sdiv ex))
@@ -381,8 +396,33 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
      -- xor
      | 29 := extractBinaryOp rawinstr ctx (instruction.bit bit_op.xor)
 
+     -- trunc
+     | 37 := extractCastOp rawinstr ctx (instruction.conv conv_op.trunc)
+     -- zext
+     | 38 := extractCastOp rawinstr ctx (instruction.conv conv_op.zext)
+     -- zext
+     | 39 := extractCastOp rawinstr ctx (instruction.conv conv_op.sext)
+     -- fptoui
+     | 40 := extractCastOp rawinstr ctx (instruction.conv conv_op.fp_to_ui)
+     -- fptosi
+     | 41 := extractCastOp rawinstr ctx (instruction.conv conv_op.fp_to_si)
+     -- uitofp
+     | 42 := extractCastOp rawinstr ctx (instruction.conv conv_op.ui_to_fp)
+     -- sitofp
+     | 43 := extractCastOp rawinstr ctx (instruction.conv conv_op.si_to_fp)
+     -- fptrunc
+     | 44 := extractCastOp rawinstr ctx (instruction.conv conv_op.fp_trunc)
+     -- fpext
+     | 45 := extractCastOp rawinstr ctx (instruction.conv conv_op.fp_ext)
+     -- ptrtoint
+     | 46 := extractCastOp rawinstr ctx (instruction.conv conv_op.ptr_to_int)
+     -- inttoptr
+     | 47 := extractCastOp rawinstr ctx (instruction.conv conv_op.int_to_ptr)
+     -- bitcast
+     | 48 := extractCastOp rawinstr ctx (instruction.conv conv_op.bit_cast)
+
      -- icmp
-     | 52 := 
+     | 52 :=
           do d <- getCmpInstData rawinstr,
              (match d with
               | none := throw (IO.userError "expected icmp instruction")
@@ -398,14 +438,14 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
              d <- getPhiData rawinstr,
              (match d with
               | none := throw (IO.userError "expected phi instruction")
-              | some vs := 
+              | some vs :=
                   do vs' <- Array.mmap (λvbb:(LLVMValue×BasicBlock),
                              Prod.mk <$> extractValue vbb.1 ctx <*> extractBlockLabel vbb.2 ctx) vs,
                      pure (instruction.phi t vs')
               )
 
      -- select
-     | 56 := 
+     | 56 :=
           do d <- getSelectInstData rawinstr,
              (match d with
               | none := throw (IO.userError "expected select instruction")
@@ -464,7 +504,7 @@ def extractFunction (fn : LLVMFunction) : IO define :=
 def extractModule (m:Module) : IO module :=
   do nm <- getModuleIdentifier m,
      fns <- getFunctionArray m >>= Array.mmap extractFunction,
-     pure (module.mk 
+     pure (module.mk
              (some nm)
              [] -- datalayout TODO
              Array.empty -- types TODO
@@ -479,5 +519,3 @@ def extractModule (m:Module) : IO module :=
            ).
 
 end llvm.
-
-

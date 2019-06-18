@@ -226,7 +226,7 @@ obj_res mkSomeList( b_obj_arg m ) {
 
   obj_res y = alloc_cnstr( 1, 2, 0 );
   cnstr_set (y, 0, m );
-  cnstr_set (y, 1, x ); 
+  cnstr_set (y, 1, x );
 
   return y;
 }
@@ -263,11 +263,11 @@ obj_res getFunctionArgs( b_obj_arg f, obj_arg r) {
     } else {
       aname_obj = mk_option_some( mk_string(aname->getKey().str()) );
     }
-    
+
     Type *tp = arg.getType();
     obj_res tp_obj = alloc_external( getTrivialObjectClass(), tp );
-    
-    obj_res tuple = alloc_cnstr( 0, 2, 0 ); 
+
+    obj_res tuple = alloc_cnstr( 0, 2, 0 );
     cnstr_set( tuple, 0, aname_obj );
     cnstr_set( tuple, 1, tp_obj );
 
@@ -353,7 +353,7 @@ uint8_t basicBlockLt( b_obj_arg bb1_obj, b_obj_arg bb2_obj ) {
 
 obj_res getInstructionName( b_obj_arg i_obj, obj_arg r ) {
   Instruction *i = static_cast<Instruction*>(external_data(i_obj));
-  
+
   ValueName *vnm = i->getValueName();
   if( vnm == nullptr ) {
     return set_io_result( r, mk_option_none() );
@@ -446,12 +446,12 @@ obj_res getBranchInstData( b_obj_arg i_obj, obj_arg r ) {
 
     } else if (bi->getNumSuccessors() == 2 ) {
       obj_res x = alloc_cnstr( 1, 3, 0 );
-      
+
       obj_res c_obj = alloc_external( getTrivialObjectClass(), bi->getCondition() );
 
       obj_res t_obj = alloc_external( getTrivialObjectClass(), bi->getSuccessor(0) );
       obj_res f_obj = alloc_external( getTrivialObjectClass(), bi->getSuccessor(1) );
-      
+
       cnstr_set( x, 0, c_obj );
       cnstr_set( x, 1, t_obj );
       cnstr_set( x, 2, f_obj );
@@ -467,13 +467,13 @@ obj_res getPhiData( b_obj_arg i_obj, obj_arg r ) {
   Instruction *i = static_cast<Instruction*>(external_data(i_obj));
   PHINode* phi = dyn_cast<PHINode>(i);
   if( phi ) {
-    obj_res arr = alloc_array( 0, 0 );  
+    obj_res arr = alloc_array( 0, 0 );
 
     unsigned n = phi->getNumIncomingValues();
     for( unsigned i = 0; i<n; i++ ) {
       Value* v = phi->getIncomingValue(i);
       BasicBlock* bb = phi->getIncomingBlock(i);
-      
+
       obj_res v_obj = alloc_external( getTrivialObjectClass(), v );
       obj_res bb_obj = alloc_external( getTrivialObjectClass(), bb );
 
@@ -485,6 +485,26 @@ obj_res getPhiData( b_obj_arg i_obj, obj_arg r ) {
     }
 
     return set_io_result( r, mk_option_some(arr) );
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
+
+obj_res getCastInstData( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  CastInst *ci = dyn_cast<CastInst>(i);
+  if( ci ) {
+
+    unsigned int opcode = static_cast<unsigned int>(ci->getOpcode());
+    Value* v = ci->getOperand( 0 );
+
+    obj_res v_obj = alloc_external( getTrivialObjectClass(), v );
+
+    obj_res pair = alloc_cnstr( 0, 2, 0 );
+    cnstr_set( pair, 0, box(opcode) );
+    cnstr_set( pair, 1, v_obj );
+
+    return set_io_result( r, mk_option_some( pair ) );
   }
 
   return set_io_result( r, mk_option_none() );
@@ -510,10 +530,10 @@ obj_res getSelectInstData( b_obj_arg i_obj, obj_arg r ) {
     obj_res tuple = alloc_cnstr( 0, 2, 0 );
     cnstr_set( tuple, 0, vc_obj );
     cnstr_set( tuple, 1, pair );
-    
+
     return set_io_result( r, mk_option_some( tuple ) );
   }
-  
+
   return set_io_result( r, mk_option_none() );
 }
 
@@ -559,7 +579,7 @@ obj_res getConstIntData( b_obj_arg c_obj, obj_arg r ) {
 	  mul2k( *m, *m, 64 );
 	  *m |= mpz( rawvals[i] );
 	}
-     
+
 	val_obj = mk_nat_obj_core(*m);
       }
     }
@@ -624,11 +644,10 @@ obj_res decomposeValue( b_obj_arg v_obj, obj_arg r ) {
   } else {
     x = alloc_cnstr(0,0,0);
   }
-  
+
   return set_io_result( r, x );
 }
 
 
 
 }
-
