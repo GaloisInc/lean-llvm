@@ -97,8 +97,8 @@ def pp_mangling : mangling → doc
 .
 
 def pp_layout_spec : layout_spec → doc
-| big_endian     := text "E"
-| little_endian  := text "e"
+| (endianness endian.big)    := text "E"
+| (endianness endian.little) := text "e"
 | (pointer_size addr_space sz abi pref idx) :=
      text "p" <> pp_nonzero addr_space <> text ":"
      <> nat sz <> text ":"
@@ -115,12 +115,12 @@ def pp_layout_spec : layout_spec → doc
 | (stack_alloca n) := text "A" <> nat n
 .
 
-def pp_layout (xs:data_layout) : doc
+def pp_layout (xs:List layout_spec) : doc
   := hcat (punctuate (text "-") (List.map pp_layout_spec xs))
 .
 
-def l1 : data_layout :=
-  [ big_endian,
+def l1 : List layout_spec :=
+  [ endianness endian.big,
     layout_spec.mangling mangling.mach_o,
     pointer_size 0 64 64 64 none,
     align_size align_type.integer 64 64 none,

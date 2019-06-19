@@ -84,10 +84,13 @@ inductive mangling
   | windows_coff
   | windows_coff_x86
 
+inductive endian
+  | big
+  | little
+
 -- The labels are mainly for documentation, taken from parseSpecifier
 inductive layout_spec
-  | big_endian                                : layout_spec
-  | little_endian                             : layout_spec
+  | endianness : endian → layout_spec
   | pointer_size  (address_space : ℕ)
                   (size : ℕ)
                   (abi_align : ℕ)
@@ -101,8 +104,6 @@ inductive layout_spec
   | stack_alloca  : ℕ -> layout_spec
   | mangling : mangling -> layout_spec
 .
-
-def data_layout := List layout_spec
 
 -- Types -----------------------------------------------------------------------
 
@@ -476,7 +477,7 @@ structure global_alias :=
 -- Modules ---------------------------------------------------------------------
 structure module :=
   ( source_name : Option String  )
-  ( data_layout : data_layout    ) -- ^ type size and alignment information
+  ( data_layout : List layout_spec   ) -- ^ type size and alignment information
   ( types       : Array type_decl    ) -- ^ top-level type aliases
   ( named_md    : Array named_md     )
   ( unnamed_md  : Array unnamed_md   )

@@ -506,7 +506,7 @@ def extractFunction (fn : LLVMFunction) : IO define :=
             none -- comdat
           ).
 
-def extractDataLayout (m:Module) : IO data_layout :=
+def extractDataLayout (m:Module) : IO (List layout_spec) :=
   do dlstr <- getModuleDataLayoutStr m,
      match parse.run parse.data_layout dlstr with
      | (Sum.inl (stk,str')) :=

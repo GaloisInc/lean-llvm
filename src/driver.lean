@@ -16,9 +16,8 @@ def main (xs : List String) : IO UInt32 := do
 
   IO.println (pp.render (pp_module m)),
 
-  (v,st) <- runFunc (symbol.mk "blshr")
-             [ runtime_value.int 32 (bv.from_nat 32 16)
-             , runtime_value.int 32 (bv.from_nat 32 4)
+  (v,st) <- runFunc (symbol.mk "fib")
+             [ runtime_value.int 32 (bv.from_nat 32 8)
              ]
              (state.mk RBMap.empty m),
 
