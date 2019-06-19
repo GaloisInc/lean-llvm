@@ -219,6 +219,10 @@ obj_res setModuleIdentifier(b_obj_arg m, b_obj_arg nm, obj_arg r) {
     return set_io_result(r, box(0));
 }
 
+obj_res getModuleDataLayoutStr( b_obj_arg m, obj_arg r ) {
+  return set_io_result( r, mk_string(toModule(m)->getDataLayoutStr()) );
+}
+
 obj_res mkSomeList( b_obj_arg m ) {
   obj_res x = alloc_cnstr( 1, 2, 0 );
   cnstr_set( x, 0, m );

@@ -14,11 +14,11 @@ def main (xs : List String) : IO UInt32 := do
   mb ← newMemoryBufferFromFile xs.head,
   m ← parseBitcodeFile mb ctx >>= extractModule,
 
-  Array.miterate m.defines () (λ_i dfn _m,
-        IO.println (pp.render (llvm.pp_define dfn))),
+  IO.println (pp.render (pp_module m)),
 
-  (v,st) <- runFunc (symbol.mk "fib")
-             [ runtime_value.int 32 (bv.from_nat 32 20)
+  (v,st) <- runFunc (symbol.mk "blshr")
+             [ runtime_value.int 32 (bv.from_nat 32 16)
+             , runtime_value.int 32 (bv.from_nat 32 4)
              ]
              (state.mk RBMap.empty m),
 

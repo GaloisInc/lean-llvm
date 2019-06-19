@@ -4,6 +4,8 @@ import init.data.rbmap
 
 import .ast
 import .pp
+import .parser
+import .data_layout
 
 -- Type for pointers
 --
@@ -53,10 +55,13 @@ def newMemoryBufferFromFile : String → IO MemoryBuffer := default _
 def parseBitcodeFile : MemoryBuffer → LLVMContext → IO Module := default _
 
 @[extern 2 cpp "lean_llvm::getModuleIdentifier"]
-def getModuleIdentifier : Module → IO String := default _
+def getModuleIdentifier : @& Module → IO String := default _
 
 @[extern 3 cpp "lean_llvm::setModuleIdentifier"]
-def setModuleIdentifier : Module → String → IO Unit := default _
+def setModuleIdentifier : @& Module → String → IO Unit := default _
+
+@[extern 2 cpp "lean_llvm::getModuleDataLayoutStr"]
+def getModuleDataLayoutStr : @& Module → IO String := default _
 
 @[extern 1 cpp "lean_llvm::mkSomeList"]
 def mkSomeList : @& Nat → List Nat := default _
@@ -501,12 +506,20 @@ def extractFunction (fn : LLVMFunction) : IO define :=
             none -- comdat
           ).
 
+def extractDataLayout (m:Module) : IO data_layout :=
+  do dlstr <- getModuleDataLayoutStr m,
+     match parse.run parse.data_layout dlstr with
+     | (Sum.inl (stk,str')) :=
+          throw (IO.userError ("Could not parse data layout string: " ++ dlstr ++ "  " ++ stk.repr ++ "  " ++ str'))
+     | (Sum.inr dl)  := pure dl.
+
 def extractModule (m:Module) : IO module :=
   do nm <- getModuleIdentifier m,
+     dl <- extractDataLayout m,
      fns <- getFunctionArray m >>= Array.mmap extractFunction,
      pure (module.mk
              (some nm)
-             [] -- datalayout TODO
+             dl
              Array.empty -- types TODO
              Array.empty -- named_md TODO
              Array.empty -- unnamed_md TODO

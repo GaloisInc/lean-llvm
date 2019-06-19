@@ -79,8 +79,7 @@ open layout_spec.
 
 def pp_layout_body (sz abi:ℕ) (pref: Option ℕ) : doc :=
   nat sz <> text ":" <> nat abi <>
-    (Option.casesOn pref empty (λx, text ":" <> nat x))
-.
+  pp_opt (λx, text ":" <> nat x) pref.
 
 def pp_align_type : align_type → doc
 | align_type.integer := text "i"
@@ -100,8 +99,13 @@ def pp_mangling : mangling → doc
 def pp_layout_spec : layout_spec → doc
 | big_endian     := text "E"
 | little_endian  := text "e"
-| (pointer_size addr_space sz abi pref _idx) :=
-     text "p" <> pp_nonzero addr_space <> text ":" <> pp_layout_body sz abi pref
+| (pointer_size addr_space sz abi pref idx) :=
+     text "p" <> pp_nonzero addr_space <> text ":"
+     <> nat sz <> text ":"
+     <> nat abi <> text ":"
+     <> nat pref <> text ":"
+     <> pp_opt (λi, text ":" <> nat i) idx
+
 | (align_size tp sz abi pref) :=
      pp_align_type tp <> pp_layout_body sz abi pref
 | (native_int_size szs) := text "n" <> hcat (punctuate (text ":") (List.map nat szs))
@@ -118,7 +122,7 @@ def pp_layout (xs:data_layout) : doc
 def l1 : data_layout :=
   [ big_endian,
     layout_spec.mangling mangling.mach_o,
-    pointer_size 0 64 64 none 0,
+    pointer_size 0 64 64 64 none,
     align_size align_type.integer 64 64 none,
     align_size align_type.float   80 128 none,
     align_size align_type.float   64 64 none,

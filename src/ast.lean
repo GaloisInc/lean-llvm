@@ -91,8 +91,8 @@ inductive layout_spec
   | pointer_size  (address_space : ℕ)
                   (size : ℕ)
                   (abi_align : ℕ)
-                  (pref_align : Option ℕ)
-                  (index_size : ℕ)         : layout_spec
+                  (pref_align : ℕ)
+                  (index_size : Option ℕ) : layout_spec
   | align_size    (align_type : align_type) (size : ℕ)
                   (abi_align : ℕ) (pref_align : Option ℕ) : layout_spec
   | native_int_size (legal_widths : List ℕ)     : layout_spec
