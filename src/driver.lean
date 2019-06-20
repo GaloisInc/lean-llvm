@@ -16,14 +16,15 @@ def main (xs : List String) : IO UInt32 := do
 
   IO.println (pp.render (pp_module m)),
 
-  (v,st) <- runFunc (symbol.mk "fib")
+  let res :=
+     runFunc (symbol.mk "fib")
              [ runtime_value.int 32 (bv.from_nat 32 8)
              ]
-             (state.mk RBMap.empty m),
+             (state.mk RBMap.empty m) in
+  match res with
+  | (Sum.inl err) := throw err
+  | (Sum.inr (runtime_value.int _ x, _)) :=
+       do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString),
+          pure 0
+  | _ := pure 0
 
-  (match v with
-   | (runtime_value.int _ x) := IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString)
-   | _ := pure ()),
-
-  pure 0
-  

@@ -30,85 +30,90 @@ structure state :=
   (mem : memMap)
   (mod : module).
 
+structure sim_conts (z:Type) :=
+  (kerr : IO.Error → z) /- error continuation -/
+  (kret : Option runtime_value → state → z) /- return continuation -/
+  (kcall : (Option runtime_value → state → z) → symbol → List runtime_value → state → z)
+         /- call continuation -/
+  (kjump : block_label → frame → state → z) /- jump continuation -/
+.
+
 structure sim (a:Type) :=
-  (runSim : Πz:Type,
-     (Option runtime_value → state → IO z) /- return continuation -/ →
-     ((Option runtime_value → state → IO z) → symbol → List runtime_value → state → IO z) 
-         /- call continuation -/ →
-     (block_label → frame → state → IO z) /- jump continuation -/ →
-     (a → frame → state → IO z) /- straightline continuation -/ →
-     (frame → state → IO z))
+  (runSim :
+     Π(z:Type),
+     (sim_conts z) /- nonlocal continuations -/ →
+     (a → frame → state → z) /- normal continuation -/ →
+     (frame → state → z)).
 
 namespace sim.
 
-instance functor : Functor sim := 
-  { map := λa b f (m:sim a), sim.mk (λz kret kcall kjump k,
-     m.runSim z kret kcall kjump (λx, k (f x)))
+instance functor : Functor sim :=
+  { map := λa b f (m:sim a), sim.mk (λz conts k,
+     m.runSim z conts (λx, k (f x)))
 
-  , mapConst := λa b x (m:sim b), sim.mk (λ z kret kcall kjump k,
-     m.runSim z kret kcall kjump (λ_, k x))
+  , mapConst := λa b x (m:sim b), sim.mk (λz conts k,
+     m.runSim z conts (λ_, k x))
   }.
 
 instance hasPure : HasPure sim :=
-  { pure := λa x, sim.mk (λz _kret _kcall _kjump k, k x) }.
+  { pure := λa x, sim.mk (λz _ k, k x) }.
 
 instance hasSeq : HasSeq sim :=
-  { seq := λa b mf mx, sim.mk (λz kret kcall kjump k,
-          mf.runSim z kret kcall kjump (λf,
-          mx.runSim z kret kcall kjump (λx,
+  { seq := λa b mf mx, sim.mk (λz conts k,
+          mf.runSim z conts (λf,
+          mx.runSim z conts (λx,
           k (f x))))
   }.
 
 instance hasSeqLeft : HasSeqLeft sim :=
-  { seqLeft := λa b mx my, sim.mk (λz kret kcall kjump k,
-       mx.runSim z kret kcall kjump (λx,
-       my.runSim z kret kcall kjump (λ_,
+  { seqLeft := λa b mx my, sim.mk (λz conts k,
+       mx.runSim z conts (λx,
+       my.runSim z conts (λ_,
        k x)))
   }.
 
 instance hasSeqRight : HasSeqRight sim :=
-  { seqRight := λa b mx my, sim.mk (λz kret kcall kjump k,
-       mx.runSim z kret kcall kjump (λ_,
-       my.runSim z kret kcall kjump (λy,
+  { seqRight := λa b mx my, sim.mk (λz conts k,
+       mx.runSim z conts (λ_,
+       my.runSim z conts (λy,
        k y)))
   }.
 
 instance hasBind : HasBind sim :=
-  { bind := λa b mx mf, sim.mk (λz kret kcall kjump k,
-       mx.runSim z kret kcall kjump (λx,
-         (mf x).runSim z kret kcall kjump k))
+  { bind := λa b mx mf, sim.mk (λz conts k,
+       mx.runSim z conts (λx,
+         (mf x).runSim z conts k))
   }.
 
 instance applicative : Applicative sim := Applicative.mk _.
 instance monad : Monad sim := Monad.mk _.
 
 instance monadExcept : MonadExcept IO.Error sim :=
-  { throw := λa err, sim.mk (λz _kret _kcall _kjump _k _frm _st, throw err) 
-  , catch := λa m handle, sim.mk (λz kret kcall kjump k frm st,
-       catch (m.runSim z kret kcall kjump k frm st) 
-             (λ err, (handle err).runSim z kret kcall kjump k frm st))
+  { throw := λa err, sim.mk (λz conts _k _frm _st, conts.kerr err)
+  , catch := λa m handle, sim.mk (λz conts k frm st,
+       let conts' := 
+          { conts with
+              kerr := λerr, (handle err).runSim z conts k frm st }
+       in m.runSim z conts' k frm st)
   }.
 
-def io {a} (m:IO a) : sim a :=
-  sim.mk (λz _kret _kcall _kjump k frm st, m >>= λx, k x frm st).
-
 def setFrame (frm:frame) : sim Unit :=
-  sim.mk (λz _kret _kcall _kjump k _ st, k () frm st).
+  sim.mk (λz _ k _ st, k () frm st).
 
 def getFrame : sim frame :=
-  sim.mk (λz _kret _kcall _kjump k frm st, k frm frm st).
+  sim.mk (λz _ k frm st, k frm frm st).
+
+def modifyFrame (f: frame → frame) : sim Unit :=
+  sim.mk (λz _ k frm st, k () (f frm) st).
 
 def getState : sim state :=
-  sim.mk (λz _kret _kcall _kjump k frm st, k st frm st).
+  sim.mk (λz _ k frm st, k st frm st).
 
 def setState (st:state) : sim Unit :=
-  sim.mk (λz _kret _kcall _kjump k frm _, k () frm st).
+  sim.mk (λz _ k frm _, k () frm st).
 
 def assignReg (reg:ident) (v:runtime_value) : sim Unit :=
-  do frm <- getFrame,
-     let (frame.mk locals func curr prev) := frm in
-     let frm' := frame.mk (RBMap.insert locals reg v) func curr prev in
-     setFrame frm'.
+  modifyFrame (λ frm, { frm with locals := RBMap.insert frm.locals reg v }).
 
 def lookupReg (reg:ident) : sim runtime_value :=
   do frm <- getFrame,
@@ -117,22 +122,22 @@ def lookupReg (reg:ident) : sim runtime_value :=
      | (some v) := pure v.
 
 def returnVoid {a} : sim a :=
-  sim.mk (λz kret _kcall _kjump _k _frm st, kret none st).
+  sim.mk (λz conts _k _frm st, conts.kret none st).
 
-def returnValue {a} (v:runtime_value) : sim a := 
-  sim.mk (λz kret _kcall _kjump _k _frm st, kret (some v) st).
+def returnValue {a} (v:runtime_value) : sim a :=
+  sim.mk (λz conts _k _frm st, conts.kret (some v) st).
 
 def jump {a} (l:block_label) : sim a :=
-  sim.mk (λz _kret _kcall kjump _k frm st, kjump l frm st).
+  sim.mk (λz conts _k frm st, conts.kjump l frm st).
 
 def call (s:symbol) (args:List runtime_value) : sim (Option runtime_value) :=
-  sim.mk (λz _kret kcall _kjump k frm st, kcall (λv, k v frm) s args st).
+  sim.mk (λz conts k frm st, conts.kcall (λv, k v frm) s args st).
 
 end sim.
 
 def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 
-def eval_mem_type (t:llvm_type) : sim mem_type := 
+def eval_mem_type (t:llvm_type) : sim mem_type :=
   do st <- sim.getState,
      match lift_mem_type st.mod.types t with
      | none := throw (IO.userError "could not lift type")
@@ -176,7 +181,7 @@ def asPred : runtime_value → sim Bool
 | _ := throw (IO.userError "expected integer value as predicate")
 
 def eval_icmp (op:icmp_op) : runtime_value → runtime_value → sim runtime_value :=
-  int_op (λw a b, 
+  int_op (λw a b,
     let t := (pure (runtime_value.int 1 (bv.from_nat 1 1)) : sim runtime_value) in
     let f := (pure (runtime_value.int 1 (bv.from_nat 1 0)) : sim runtime_value) in
     match op with
@@ -308,59 +313,72 @@ def evalStmt (s:stmt) : sim Unit :=
 def evalStmts (stmts:Array stmt) : sim Unit :=
   Array.mfoldl (λ_ s, evalStmt s) Unit.unit stmts.
 
-def findBlock (l:block_label) (func:define) : IO (Array stmt) :=
-  match Array.find func.body (λbb,
+def findBlock (l:block_label) (func:define) : Option (Array stmt) :=
+  Array.find func.body (λbb,
     match block_label.decideEq bb.label l with
     | Decidable.isTrue _ := some bb.stmts
-    | Decidable.isFalse _ := none) with
-  | none := throw (IO.userError "could not find block label")
-  | some stmts := pure stmts
-  .
+    | Decidable.isFalse _ := none).
 
-def findFunc (s:symbol) (mod:module) : IO define :=
-  match Array.find mod.defines (λd,
+def findFunc (s:symbol) (mod:module) : Option define :=
+  Array.find mod.defines (λd,
     match decEq d.name.symbol s.symbol with
     | Decidable.isTrue _ := some d
-    | Decidable.isFalse _ := none) with
-  | none := throw (IO.userError "could not find block function")
-  | some d := pure d
-  .
+    | Decidable.isFalse _ := none).
 
-partial def execBlock {z} 
-    (kret:Option runtime_value → state → IO z) 
-    (kcall: (Option runtime_value → state → IO z) → symbol → List runtime_value → state → IO z)
-    : block_label → frame → state → IO z
+partial def execBlock {z}
+    (zh:z)
+    (kerr:IO.Error → z)
+    (kret:Option runtime_value → state → z)
+    (kcall: (Option runtime_value → state → z) → symbol → List runtime_value → state → z)
+    : block_label → frame → state → z
 | next frm st :=
-    do stmts <- findBlock next frm.func,
-       let frm' := frame.mk frm.locals frm.func next (some frm.curr) in
-       (evalStmts stmts).runSim z kret kcall execBlock
-          (λ_ _ _, throw (IO.userError "unreachable code!"))
+    match findBlock next frm.func with
+    | none := kerr (IO.userError ("Could not find label: " ++ pp.render (pp_label next)))
+    | (some stmts) :=
+       let frm' := { frm with curr := next, prev := some frm.curr } in
+       (evalStmts stmts).runSim z
+          { kerr  := kerr
+          , kret  := kret
+          , kcall := kcall
+          , kjump := execBlock
+          }
+          (λ_ _ _, kerr (IO.userError ("expected block terminatror at the end of block: "
+                                       ++ pp.render (pp_label next))))
           frm' st.
 
-def assignArgs : List (typed ident) → List runtime_value → regMap → IO regMap
+def assignArgs : List (typed ident) → List runtime_value → regMap → Option regMap
 | [] [] regs := pure regs
 | (f::fs) (a::as) regs := assignArgs fs as (RBMap.insert regs f.value a)
-| _ _ _ := throw (IO.userError "formal/actual function argument mismatch")
+| _ _ _ := failure
 
-def entryLabel (d:define) : IO block_label :=
+def entryLabel (d:define) : Option block_label :=
   match Array.getOpt d.body 0 with
   | (some bb) := pure bb.label
-  | none      := throw (IO.userError "function has no entry block!")
+  | none      := failure
 .
 
-partial def execFunc {z}
-  : (Option runtime_value → state → IO z) → symbol → List runtime_value → state → IO z
+partial def execFunc {z} (zh:z) (kerr:IO.Error → z)
+  : (Option runtime_value → state → z) → symbol → List runtime_value → state → z
 | kret sym args st :=
-    do func <- findFunc sym st.mod,
+   (do func   <- findFunc sym st.mod,
        locals <- assignArgs func.args.toList args RBMap.empty,
        entryl <- entryLabel func,
-       stmts <- findBlock entryl func,
+       stmts  <- findBlock entryl func,
        let frm := frame.mk locals func entryl none in
-       (evalStmts stmts).runSim z kret execFunc (execBlock kret execFunc)
-          (λ_ _ _, throw (IO.userError "unreachable code!"))
-          frm st.
+       some $ (evalStmts stmts).runSim z
+          { kerr  := kerr
+          , kret  := kret
+          , kcall := execFunc
+          , kjump := execBlock zh kerr kret execFunc
+          }
+          (λ_ _ _, kerr (IO.userError "unreachable code!"))
+          frm st).getOrElse
+    (kerr (IO.userError ("could not execute function: " ++ sym.symbol)))
 
-def runFunc : symbol → List runtime_value → state → IO (Option runtime_value × state) :=
-  execFunc (λov st, pure (ov,st)).
+def runFunc : symbol → List runtime_value → state → IO.Error ⊕ (Option runtime_value × state) :=
+  execFunc
+    (Sum.inl (IO.userError "bottom"))
+    Sum.inl
+    (λov st, Sum.inr (ov,st)).
 
 end llvm.
