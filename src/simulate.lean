@@ -26,6 +26,13 @@ structure frame :=
   (curr   : block_label)
   (prev   : Option block_label)
 
+instance frameInh : Inhabited frame := Inhabited.mk 
+  { locals := RBMap.empty
+  , func   := llvm.define.mk none (llvm_type.prim_type prim_type.void) (symbol.mk "") Array.empty false Array.empty none none Array.empty (strmap_empty _) none
+  , curr   := block_label.named ""
+  , prev   := none
+  }.
+
 structure state :=
   (mem : memMap)
   (mod : module).
@@ -313,17 +320,21 @@ def evalStmt (s:stmt) : sim Unit :=
 def evalStmts (stmts:Array stmt) : sim Unit :=
   Array.mfoldl (λ_ s, evalStmt s) Unit.unit stmts.
 
-def findBlock (l:block_label) (func:define) : Option (Array stmt) :=
-  Array.find func.body (λbb,
+def findBlock (l:block_label) (func:define) : sim (Array stmt) :=
+  match Array.find func.body (λbb,
     match block_label.decideEq bb.label l with
     | Decidable.isTrue _ := some bb.stmts
-    | Decidable.isFalse _ := none).
+    | Decidable.isFalse _ := none) with
+  | none := throw (IO.userError ("Could not find function: " ++ pp.render (pp_label l)))
+  | some d := pure d.
 
-def findFunc (s:symbol) (mod:module) : Option define :=
-  Array.find mod.defines (λd,
+def findFunc (s:symbol) (mod:module) : sim define :=
+  match Array.find mod.defines (λd,
     match decEq d.name.symbol s.symbol with
     | Decidable.isTrue _ := some d
-    | Decidable.isFalse _ := none).
+    | Decidable.isFalse _ := none) with
+  | none := throw (IO.userError ("Could not find function: " ++ s.symbol))
+  | some d := pure d.
 
 partial def execBlock {z}
     (zh:z)
@@ -332,29 +343,26 @@ partial def execBlock {z}
     (kcall: (Option runtime_value → state → z) → symbol → List runtime_value → state → z)
     : block_label → frame → state → z
 | next frm st :=
-    match findBlock next frm.func with
-    | none := kerr (IO.userError ("Could not find label: " ++ pp.render (pp_label next)))
-    | (some stmts) :=
-       let frm' := { frm with curr := next, prev := some frm.curr } in
-       (evalStmts stmts).runSim z
-          { kerr  := kerr
-          , kret  := kret
-          , kcall := kcall
-          , kjump := execBlock
-          }
-          (λ_ _ _, kerr (IO.userError ("expected block terminatror at the end of block: "
-                                       ++ pp.render (pp_label next))))
-          frm' st.
+   sim.runSim (findBlock next frm.func >>= evalStmts) z
+      { kerr  := kerr
+      , kret  := kret
+      , kcall := kcall
+      , kjump := execBlock
+      }
+      (λ_ _ _, kerr (IO.userError ("expected block terminatror at the end of block: "
+                                  ++ pp.render (pp_label next))))
+      { frm with curr := next, prev := some frm.curr }
+      st.
 
-def assignArgs : List (typed ident) → List runtime_value → regMap → Option regMap
+def assignArgs : List (typed ident) → List runtime_value → regMap → sim regMap
 | [] [] regs := pure regs
 | (f::fs) (a::as) regs := assignArgs fs as (RBMap.insert regs f.value a)
-| _ _ _ := failure
+| _ _ _ := throw (IO.userError ("Acutal/formal argument mismatch"))
 
-def entryLabel (d:define) : Option block_label :=
+def entryLabel (d:define) : sim block_label :=
   match Array.getOpt d.body 0 with
   | (some bb) := pure bb.label
-  | none      := failure
+  | none      := throw (IO.userError "definition does not have entry block!")
 .
 
 partial def execFunc {z} (zh:z) (kerr:IO.Error → z)
@@ -364,16 +372,17 @@ partial def execFunc {z} (zh:z) (kerr:IO.Error → z)
        locals <- assignArgs func.args.toList args RBMap.empty,
        entryl <- entryLabel func,
        stmts  <- findBlock entryl func,
-       let frm := frame.mk locals func entryl none in
-       some $ (evalStmts stmts).runSim z
-          { kerr  := kerr
-          , kret  := kret
-          , kcall := execFunc
-          , kjump := execBlock zh kerr kret execFunc
-          }
-          (λ_ _ _, kerr (IO.userError "unreachable code!"))
-          frm st).getOrElse
-    (kerr (IO.userError ("could not execute function: " ++ sym.symbol)))
+       sim.setFrame (frame.mk locals func entryl none),
+       evalStmts stmts
+   ).runSim z
+      { kerr  := kerr
+      , kret  := kret
+      , kcall := execFunc
+      , kjump := execBlock zh kerr kret execFunc
+      }
+      (λ_ _ _, kerr (IO.userError "unreachable code!"))
+      (default _)
+      st.
 
 def runFunc : symbol → List runtime_value → state → IO.Error ⊕ (Option runtime_value × state) :=
   execFunc
