@@ -1,6 +1,8 @@
 /- A transliteration of llvm-pretty https://github.com/elliottt/llvm-pretty/blob/master/src/Text/LLVM/AST.hs -/
-import data.bitvec
-import data.rbmap
+-- import data.bitvec
+import init.data.rbmap
+import init.data.string
+import init.data.int
 
 namespace llvm
 
@@ -8,9 +10,64 @@ namespace llvm
 -- def float : Type 0 := sorry
 -- def double : Type 0 := sorry
 
+
+def strmap (a:Type) := @RBMap String a (λx y, decide (x < y))
+def strmap_empty (a:Type) : strmap a := RBMap.empty
+
 -- Identifiers -----------------------------------------------------------------
 
-structure ident := (ident : string)
+inductive ident
+| named  : String → ident
+| anon : ℕ → ident
+.
+
+namespace ident.
+
+def asString : ident → String
+| (named nm) := "%" ++ nm
+| (anon i)   := "%" ++ (Nat.toDigits 10 i).asString
+.
+
+def lt : ident → ident → Prop
+| (ident.named x) (ident.named y) := x < y
+| (ident.named _) (ident.anon _)  := True
+| (ident.anon x)  (ident.anon y)  := x < y
+| (ident.anon _)  (ident.named _) := False
+.
+
+instance : HasLess ident := ⟨lt⟩.
+
+instance decideEq : Π(x y:ident), Decidable (x = y)
+| (ident.named a) (ident.named b) := 
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, ident.noConfusion H p)
+    )
+| (ident.anon a) (ident.anon b) :=
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, ident.noConfusion H p)
+    )
+| (ident.anon _) (ident.named _) := Decidable.isFalse (λH, ident.noConfusion H)
+| (ident.named _) (ident.anon _) := Decidable.isFalse (λH, ident.noConfusion H)
+
+
+instance decideLt : Π(x y:ident), Decidable (x < y)
+| (ident.named x) (ident.named y) := 
+  (match String.decLt x y with
+   | Decidable.isTrue p  := Decidable.isTrue p
+   | Decidable.isFalse p := Decidable.isFalse (λH, p H)
+   )
+| (ident.anon x) (ident.anon y) :=
+  (match Nat.decLt x y with
+   | Decidable.isTrue p  := Decidable.isTrue p
+   | Decidable.isFalse p := Decidable.isFalse (λH, p H)
+   )
+| (ident.named _) (ident.anon _)  := Decidable.isTrue True.intro
+| (ident.anon _)  (ident.named _) := Decidable.isFalse False.elim
+.
+
+end ident.
 
 -- Data Layout -----------------------------------------------------------------
 
@@ -27,25 +84,26 @@ inductive mangling
   | windows_coff
   | windows_coff_x86
 
+inductive endian
+  | big
+  | little
+
 -- The labels are mainly for documentation, taken from parseSpecifier
 inductive layout_spec
-  | big_endian                                : layout_spec
-  | little_endian                             : layout_spec
-  | pointer_size  (address_space : nat)
-                  (size : nat)
-                  (abi_align : nat)
-                  (pref_align : option nat)
-                  (index_size : nat)         : layout_spec
-  | align_size    (align_type : align_type) (size : nat)
-                  (abi_align : nat) (pref_align : option nat) : layout_spec
-  | native_int_size (legal_widths : list nat)     : layout_spec
-  | stack_align    : nat -> layout_spec
-  | function_address_space : nat -> layout_spec
-  | stack_alloca  : nat -> layout_spec
+  | endianness : endian → layout_spec
+  | pointer_size  (address_space : ℕ)
+                  (size : ℕ)
+                  (abi_align : ℕ)
+                  (pref_align : ℕ)
+                  (index_size : Option ℕ) : layout_spec
+  | align_size    (align_type : align_type) (size : ℕ)
+                  (abi_align : ℕ) (pref_align : Option ℕ) : layout_spec
+  | native_int_size (legal_widths : List ℕ)     : layout_spec
+  | stack_align    : ℕ -> layout_spec
+  | function_address_space : ℕ -> layout_spec
+  | stack_alloca  : ℕ -> layout_spec
   | mangling : mangling -> layout_spec
 .
-
-def data_layout := list layout_spec
 
 -- Types -----------------------------------------------------------------------
 
@@ -60,40 +118,62 @@ inductive float_type
 inductive prim_type
   | label
   | void
-  | integer : nat -> prim_type
+  | integer : ℕ -> prim_type
   | float_type : float_type -> prim_type
   | x86mmx
   | metadata
 
 inductive llvm_type
   | prim_type : prim_type -> llvm_type
-  | alias : ident -> llvm_type
-  | array : nat -> llvm_type -> llvm_type
-  | fun_ty : llvm_type -> list llvm_type -> bool -> llvm_type
+  | alias : String -> llvm_type
+  | array : ℕ -> llvm_type -> llvm_type
+  | fun_ty : llvm_type -> List llvm_type -> Bool -> llvm_type
   | ptr_to : llvm_type -> llvm_type
-  | struct : list llvm_type -> llvm_type
-  | packed_struct : list llvm_type -> llvm_type
-  | vector : nat -> llvm_type -> llvm_type
+  | struct : List llvm_type -> llvm_type
+  | packed_struct : List llvm_type -> llvm_type
+  | vector : ℕ -> llvm_type -> llvm_type
   | opaque : llvm_type
 
 -- Top-level Type Aliases ------------------------------------------------------
 
 structure type_decl :=
-  (name : ident)
+  (name : String)
   (value : llvm_type)
 
 -- Symbols ---------------------------------------------------------------------
 
-structure symbol := (symbol : string)
+structure symbol := (symbol : String)
 
 inductive block_label
-  | named : ident -> block_label
-  | anon : nat -> block_label
+  | named : String -> block_label
+  | anon : ℕ -> block_label
 
-structure typed (a : Type):=
+
+namespace block_label.
+
+instance decideEq : Π(x y:block_label), Decidable (x = y)
+| (block_label.named a) (block_label.named b) := 
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, block_label.noConfusion H p)
+    )
+| (block_label.anon a) (block_label.anon b) :=
+    (match decEq a b with
+     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p := Decidable.isFalse (λH, block_label.noConfusion H p)
+    )
+| (block_label.anon _) (block_label.named _) := Decidable.isFalse (λH, block_label.noConfusion H)
+| (block_label.named _) (block_label.anon _) := Decidable.isFalse (λH, block_label.noConfusion H)
+.
+
+end block_label.
+
+
+structure typed (a : Type) :=
   ( type  : llvm_type )
   ( value : a )
 
+/-
 namespace llvm.typed
 lemma sizeof_spec' (a:Type) [has_sizeof a] (x:typed a) :
   typed.sizeof a x = 1 + sizeof (x.type) + sizeof (x.value) :=
@@ -101,18 +181,19 @@ begin
   cases x, unfold typed.sizeof
 end
 end llvm.typed
+-/
 
 -- Instructions ----------------------------------------------------------------
 
 inductive arith_op
-  | add (uoverflow : bool) (soverflow : bool) : arith_op
+  | add (uoverflow : Bool) (soverflow : Bool) : arith_op
   | fadd : arith_op
-  | sub (uoverflow : bool) (soverflow : bool) : arith_op
+  | sub (uoverflow : Bool) (soverflow : Bool) : arith_op
   | fsub : arith_op
-  | mul (uoverflow : bool) (soverflow : bool) : arith_op
+  | mul (uoverflow : Bool) (soverflow : Bool) : arith_op
   | fmul : arith_op
-  | udiv (exact : bool) : arith_op
-  | sdiv (exact : bool) : arith_op
+  | udiv (exact : Bool) : arith_op
+  | sdiv (exact : Bool) : arith_op
   | fdiv : arith_op
   | urem : arith_op
   | srem : arith_op
@@ -120,9 +201,9 @@ inductive arith_op
 
 -- | binary bitwise operators.
 inductive bit_op
-  | shl (uoverflow : bool) (soverflow : bool) : bit_op
-  | lshr (exact : bool) : bit_op
-  | ashr (exact : bool) : bit_op
+  | shl (uoverflow : Bool) (soverflow : Bool) : bit_op
+  | lshr (exact : Bool) : bit_op
+  | ashr (exact : Bool) : bit_op
   | and
   | or
   | xor
@@ -183,19 +264,19 @@ inductive clause
 
 mutual inductive value, const_expr, val_md, debug_loc
 with value : Type
-  | integer : ℤ -> value
-  | bool : bool -> value
+  | integer : Int -> value
+  | bool : Bool -> value
 --  | float : float -> value
 --  | double : double -> value
   | ident : ident -> value
   | const_expr : const_expr -> value
   | symbol : symbol -> value
   | null  : value
-  | array : llvm_type -> list value -> value
-  | vector : llvm_type -> list value -> value
-  | struct : list (typed value) -> value
-  | packed_struct : list (typed value) -> value
-  | string : string -> value -- FIXME, should probably actually be list of word8
+  | array : llvm_type -> List value -> value
+  | vector : llvm_type -> List value -> value
+  | struct : List (typed value) -> value
+  | packed_struct : List (typed value) -> value
+  | string : String -> value -- FIXME, should probably actually be list of word8
   | undef : value
   | label : block_label -> value
   | zero_init : value
@@ -204,7 +285,7 @@ with value : Type
 
 with const_expr : Type
   | select : typed value -> typed value -> typed value -> const_expr
-  | gep : bool -> option nat -> llvm_type -> list (typed value) -> const_expr
+  | gep : Bool -> Option ℕ -> llvm_type -> List (typed value) -> const_expr
   | conv : conv_op -> typed value -> llvm_type -> const_expr
   | arith : arith_op -> typed value -> value -> const_expr
   | fcmp : fcmp_op -> typed value -> typed value -> const_expr
@@ -213,19 +294,20 @@ with const_expr : Type
   | block_addr : symbol -> block_label -> const_expr
 
 with val_md : Type
-  | string : string -> val_md
+  | string : String -> val_md
   | value : typed value -> val_md
-  | ref : nat -> val_md
-  | node : list (option val_md) -> val_md
-  | md_loc : debug_loc -> val_md
--- --  | val_md_debug_info (debug_info' lab)
+  | ref : ℕ -> val_md
+  | node : List (Option val_md) -> val_md
+  | loc : debug_loc -> val_md
+  | debug_info : val_md -- FIXME , just a placeholder for now
 
 with debug_loc : Type
   | debug_loc
-   ( line  : nat )
-   ( col   : nat )
+   ( line  : ℕ )
+   ( col   : ℕ )
    ( scope : val_md )
-   ( IA    : option val_md )
+   ( IA    : Option val_md )
+   : debug_loc
 .
 
 inductive instruction : Type
@@ -234,10 +316,10 @@ inductive instruction : Type
   | arith : arith_op -> typed value -> value -> instruction
   | bit : bit_op -> typed value -> value -> instruction
   | conv : conv_op -> typed value -> llvm_type -> instruction
-  | call : Π(tailcall : bool), llvm_type -> value -> list (typed value) -> instruction
-  | alloca : llvm_type -> option (typed value) -> option nat -> instruction
-  | load : typed value -> option atomic_ordering -> option nat /- align -/ -> instruction
-  | store : typed value -> typed value -> option nat /- align -/ -> instruction
+  | call : Π(tailcall : Bool), llvm_type -> value -> List (typed value) -> instruction
+  | alloca : llvm_type -> Option (typed value) -> Option Nat -> instruction
+  | load : typed value -> Option atomic_ordering -> Option Nat /- align -/ -> instruction
+  | store : typed value -> typed value -> Option Nat /- align -/ -> instruction
 /-
   | fence : option string -> atomic_ordering -> instruction
   | cmp_xchg (weak : bool) (volatile : bool) : typed value -> typed value -> typed value
@@ -247,40 +329,38 @@ inductive instruction : Type
 -/
   | icmp : icmp_op -> typed value -> value -> instruction
   | fcmp : fcmp_op -> typed value -> value -> instruction
-  | phi : llvm_type -> list (value × block_label) -> instruction
-  | gep (bounds : bool) : typed value -> list (typed value) -> instruction
+  | phi : llvm_type -> Array (value × block_label) -> instruction
+  | gep (bounds : Bool) : typed value -> List (typed value) -> instruction
   | select : typed value -> typed value -> value -> instruction
-  | extract_value : typed value -> list nat -> instruction
-  | insert_value : typed value -> typed value -> list nat -> instruction
+  | extract_value : typed value -> List ℕ -> instruction
+  | insert_value : typed value -> typed value -> List ℕ -> instruction
   | extract_elt : typed value -> value -> instruction
   | insert_elt : typed value -> typed value -> value -> instruction
   | shuffle_vector : typed value -> value -> typed value -> instruction
   | jump : block_label -> instruction
   | br : typed value -> block_label -> block_label -> instruction
-  | invoke : llvm_type -> value -> list (typed value) -> block_label -> block_label -> instruction
-  | comment : string -> instruction
+  | invoke : llvm_type -> value -> List (typed value) -> block_label -> block_label -> instruction
+  | comment : String -> instruction
   | unreachable
   | unwind
   | va_arg : typed value -> llvm_type -> instruction
-  | indirect_br : typed value -> list block_label -> instruction
-  | switch : typed value -> block_label -> list (nat × block_label) -> instruction
-  | landing_pad : llvm_type -> option (typed value) -> bool -> list (clause × typed value) -> instruction
+  | indirect_br : typed value -> List block_label -> instruction
+  | switch : typed value -> block_label -> List (ℕ × block_label) -> instruction
+  | landing_pad : llvm_type -> Option (typed value) -> Bool -> List (clause × typed value) -> instruction
   | resume : typed value -> instruction
-
-
 
 -- Named Metadata --------------------------------------------------------------
 
 structure named_md :=
-  ( name   : string)
-  ( values : list nat)
+  ( name   : String)
+  ( values : List ℕ)
 
 -- Unnamed Metadata ------------------------------------------------------------
 
 structure unnamed_md :=
-  ( index  : nat)
+  ( index  : ℕ)
   ( values : val_md)
-  ( distinct : bool)
+  ( distinct : Bool)
 
 -- Comdat ----------------------------------------------------------------------
 
@@ -315,20 +395,20 @@ inductive visibility
   | protected_visibility
 
 structure global_attrs :=
-  ( linkage    : option linkage    )
-  ( visibility : option visibility )
-  ( const      : bool              )
+  ( linkage    : Option linkage    )
+  ( visibility : Option visibility )
+  ( const      : Bool              )
 
 structure global :=
   ( sym   : symbol                  )
   ( attrs : global_attrs             )
   ( type  : llvm_type                )
-  ( value : option value            )
-  ( align : option nat              )
-  ( metadata : rbmap string val_md )
+  ( value : Option value            )
+  ( align : Option ℕ              )
+  ( metadata : strmap val_md )
 
 inductive fun_attr
-   | align_stack : nat -> fun_attr
+   | align_stack : ℕ -> fun_attr
    | alwaysinline
    | builtin
    | cold
@@ -359,35 +439,35 @@ inductive fun_attr
 
 structure declare :=
   ( ret_type : llvm_type      )
-  ( name    : symbol        )
-  ( args    : list llvm_type )
-  ( var_args : bool          )
-  ( attrs   : list fun_attr  )
-  ( comdat  : option string )
+  ( name     : symbol        )
+  ( args     : Array llvm_type )
+  ( var_args : Bool          )
+  ( attrs    : Array fun_attr  )
+  ( comdat   : Option String )
 
-structure GC := (gc : string).
+structure GC := (gc : String).
 
 structure stmt :=
-  (assign : option ident)
+  (assign : Option ident)
   (instr : instruction)
-  (metadata : (list (string × val_md)))
+  (metadata : (Array (String × val_md)))
 
 structure basic_block :=
-  ( label : option block_label )
-  ( stmts : list stmt )
+  ( label : block_label )
+  ( stmts : Array stmt )
 
 structure define :=
-  ( linkage  : option linkage  )
-  ( ret_type  : llvm_type       )
+  ( linkage  : Option linkage  )
+  ( ret_type : llvm_type       )
   ( name     : symbol         )
-  ( args     : list (typed ident)  )
-  ( var_args  : bool           )
-  ( attrs    : list fun_attr   )
-  ( sec      : option string  )
-  ( gc       : option GC      )
-  ( body     : list basic_block)
-  ( metadata : rbmap string val_md)
-  ( comdat   : option string   )
+  ( args     : Array (typed ident)  )
+  ( var_args : Bool           )
+  ( attrs    : Array fun_attr   )
+  ( sec      : Option String  )
+  ( gc       : Option GC      )
+  ( body     : Array basic_block)
+  ( metadata : strmap val_md)
+  ( comdat   : Option String   )
 
 structure global_alias :=
   ( name   : symbol   )
@@ -396,17 +476,17 @@ structure global_alias :=
 
 -- Modules ---------------------------------------------------------------------
 structure module :=
-  ( source_name : option string  )
-  ( data_layout : data_layout    ) -- ^ type size and alignment information
-  ( types      : list type_decl    ) -- ^ top-level type aliases
-  ( named_md    : list named_md     )
-  ( unnamed_md  : list unnamed_md   )
-  ( comdat     : rbmap string selection_kind)
-  ( globals    : list global   ) -- ^ global value declarations
-  ( declares   : list declare  ) -- ^ external function declarations (without definitions)
-  ( defines    : list define   ) -- ^ internal function declarations (with definitions)
-  ( inline_asm  : list string   )
-  ( aliases    : list global_alias )
+  ( source_name : Option String  )
+  ( data_layout : List layout_spec   ) -- ^ type size and alignment information
+  ( types       : Array type_decl    ) -- ^ top-level type aliases
+  ( named_md    : Array named_md     )
+  ( unnamed_md  : Array unnamed_md   )
+  ( comdat      : strmap selection_kind)
+  ( globals     : Array global   ) -- ^ global value declarations
+  ( declares    : Array declare  ) -- ^ external function declarations (without definitions)
+  ( defines     : Array define   ) -- ^ internal function declarations (with definitions)
+  ( inline_asm  : Array String   )
+  ( aliases     : Array global_alias )
 
 -- DWARF Debug Info ------------------------------------------------------------
 /-
