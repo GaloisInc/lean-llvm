@@ -26,7 +26,7 @@ structure frame :=
   (curr   : block_label)
   (prev   : Option block_label)
 
-instance frameInh : Inhabited frame := Inhabited.mk 
+instance frameInh : Inhabited frame := Inhabited.mk
   { locals := RBMap.empty
   , func   := llvm.define.mk none (llvm_type.prim_type prim_type.void) (symbol.mk "") Array.empty false Array.empty none none Array.empty (strmap_empty _) none
   , curr   := block_label.named ""
@@ -47,8 +47,8 @@ structure sim_conts (z:Type) :=
 
 structure sim (a:Type) :=
   (runSim :
-     Π(z:Type),
-     (sim_conts z) /- nonlocal continuations -/ →
+     Π{z:Type},
+     (sim_conts z)           /- nonlocal continuations -/ →
      (a → frame → state → z) /- normal continuation -/ →
      (frame → state → z)).
 
@@ -56,10 +56,10 @@ namespace sim.
 
 instance functor : Functor sim :=
   { map := λa b f (m:sim a), sim.mk (λz conts k,
-     m.runSim z conts (λx, k (f x)))
+      m.runSim conts (λx, k (f x)))
 
   , mapConst := λa b x (m:sim b), sim.mk (λz conts k,
-     m.runSim z conts (λ_, k x))
+      m.runSim conts (λ_, k x))
   }.
 
 instance hasPure : HasPure sim :=
@@ -67,29 +67,28 @@ instance hasPure : HasPure sim :=
 
 instance hasSeq : HasSeq sim :=
   { seq := λa b mf mx, sim.mk (λz conts k,
-          mf.runSim z conts (λf,
-          mx.runSim z conts (λx,
+          mf.runSim conts (λf,
+          mx.runSim conts (λx,
           k (f x))))
   }.
 
 instance hasSeqLeft : HasSeqLeft sim :=
   { seqLeft := λa b mx my, sim.mk (λz conts k,
-       mx.runSim z conts (λx,
-       my.runSim z conts (λ_,
+       mx.runSim conts (λx,
+       my.runSim conts (λ_,
        k x)))
   }.
 
 instance hasSeqRight : HasSeqRight sim :=
   { seqRight := λa b mx my, sim.mk (λz conts k,
-       mx.runSim z conts (λ_,
-       my.runSim z conts (λy,
+       mx.runSim conts (λ_,
+       my.runSim conts (λy,
        k y)))
   }.
 
 instance hasBind : HasBind sim :=
   { bind := λa b mx mf, sim.mk (λz conts k,
-       mx.runSim z conts (λx,
-         (mf x).runSim z conts k))
+       mx.runSim conts (λx, (mf x).runSim conts k))
   }.
 
 instance applicative : Applicative sim := Applicative.mk _.
@@ -98,10 +97,8 @@ instance monad : Monad sim := Monad.mk _.
 instance monadExcept : MonadExcept IO.Error sim :=
   { throw := λa err, sim.mk (λz conts _k _frm _st, conts.kerr err)
   , catch := λa m handle, sim.mk (λz conts k frm st,
-       let conts' := 
-          { conts with
-              kerr := λerr, (handle err).runSim z conts k frm st }
-       in m.runSim z conts' k frm st)
+      let conts' := { conts with kerr := λerr, (handle err).runSim conts k frm st }
+      in m.runSim conts' k frm st)
   }.
 
 def setFrame (frm:frame) : sim Unit :=
@@ -312,10 +309,9 @@ def evalInstr : instruction → sim (Option runtime_value)
 def evalStmt (s:stmt) : sim Unit :=
   do res <- evalInstr s.instr,
      match (s.assign, res) with
-     | (none, _) := pure ⟨⟩
+     | (none, _)        := pure ()
      | (some i, some v) := sim.assignReg i v
-     | (some _, none) := throw (IO.userError "expected instruction to compute a value")
-.
+     | (some _, none)   := throw (IO.userError "expected instruction to compute a value").
 
 def evalStmts (stmts:Array stmt) : sim Unit :=
   Array.mfoldl (λ_ s, evalStmt s) Unit.unit stmts.
@@ -325,7 +321,7 @@ def findBlock (l:block_label) (func:define) : sim (Array stmt) :=
     match block_label.decideEq bb.label l with
     | Decidable.isTrue _ := some bb.stmts
     | Decidable.isFalse _ := none) with
-  | none := throw (IO.userError ("Could not find function: " ++ pp.render (pp_label l)))
+  | none := throw (IO.userError ("Could not find block: " ++ pp.render (pp_label l)))
   | some d := pure d.
 
 def findFunc (s:symbol) (mod:module) : sim define :=
@@ -337,13 +333,14 @@ def findFunc (s:symbol) (mod:module) : sim define :=
   | some d := pure d.
 
 partial def execBlock {z}
-    (zh:z)
-    (kerr:IO.Error → z)
-    (kret:Option runtime_value → state → z)
+    (_zinh:z)
+    (kerr: IO.Error → z)
+    (kret: Option runtime_value → state → z)
     (kcall: (Option runtime_value → state → z) → symbol → List runtime_value → state → z)
     : block_label → frame → state → z
+
 | next frm st :=
-   sim.runSim (findBlock next frm.func >>= evalStmts) z
+   (findBlock next frm.func >>= evalStmts).runSim
       { kerr  := kerr
       , kret  := kret
       , kcall := kcall
@@ -357,37 +354,33 @@ partial def execBlock {z}
 def assignArgs : List (typed ident) → List runtime_value → regMap → sim regMap
 | [] [] regs := pure regs
 | (f::fs) (a::as) regs := assignArgs fs as (RBMap.insert regs f.value a)
-| _ _ _ := throw (IO.userError ("Acutal/formal argument mismatch"))
+| _ _ _ := throw (IO.userError ("Acutal/formal argument mismatch")).
 
 def entryLabel (d:define) : sim block_label :=
   match Array.getOpt d.body 0 with
   | (some bb) := pure bb.label
-  | none      := throw (IO.userError "definition does not have entry block!")
-.
+  | none      := throw (IO.userError "definition does not have entry block!").
 
-partial def execFunc {z} (zh:z) (kerr:IO.Error → z)
+partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
   : (Option runtime_value → state → z) → symbol → List runtime_value → state → z
-| kret sym args st :=
-   (do func   <- findFunc sym st.mod,
+
+| kret s args st :=
+   (do func   <- findFunc s st.mod,
        locals <- assignArgs func.args.toList args RBMap.empty,
-       entryl <- entryLabel func,
-       stmts  <- findBlock entryl func,
-       sim.setFrame (frame.mk locals func entryl none),
-       evalStmts stmts
-   ).runSim z
+       lab    <- entryLabel func,
+       sim.setFrame (frame.mk locals func lab none),
+       findBlock lab func >>= evalStmts
+   ).runSim
       { kerr  := kerr
       , kret  := kret
       , kcall := execFunc
-      , kjump := execBlock zh kerr kret execFunc
+      , kjump := execBlock zinh kerr kret execFunc
       }
       (λ_ _ _, kerr (IO.userError "unreachable code!"))
       (default _)
       st.
 
 def runFunc : symbol → List runtime_value → state → IO.Error ⊕ (Option runtime_value × state) :=
-  execFunc
-    (Sum.inl (IO.userError "bottom"))
-    Sum.inl
-    (λov st, Sum.inr (ov,st)).
+  execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λov st, Sum.inr (ov,st)).
 
 end llvm.
