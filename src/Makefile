@@ -5,8 +5,10 @@ CLANG=clang++
 
 SOURCES := ast.lean\
   bv.lean\
+  driver.lean\
   pp.lean\
   data_layout.lean\
+  llvm_lib.lean\
   simulate.lean\
   parser.lean\
   type_context.lean
@@ -17,8 +19,8 @@ OBJS=$(SOURCES:.cpp=.o)
 
 all : driver
 
-driver : $(CPP) $(OLEAN) llvm_exports.cpp llvm_lib.cpp driver.cpp
-	$(LEAN_HOME)/bin/leanc -O1 -g -L$(LLVM_HOME)/build/lib -I$(LLVM_HOME)/include -I$(LLVM_HOME)/build/include -I$(LEAN_HOME)/src -I$(LEAN_HOME)/src/runtime -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader -o "driver" $(CPP) llvm_exports.cpp llvm_lib.cpp driver.cpp
+driver : $(CPP) $(OLEAN) llvm_exports.cpp driver.cpp
+	$(LEAN_HOME)/bin/leanc -O1 -g -L$(LLVM_HOME)/build/lib -I$(LLVM_HOME)/include -I$(LLVM_HOME)/build/include -I$(LEAN_HOME)/src -I$(LEAN_HOME)/src/runtime -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader -o "driver" llvm_exports.cpp $(CPP)
 
 %.cpp:	%.lean %.olean
 	$(LEAN_HOME)/bin/lean -c $@ $<
@@ -28,7 +30,7 @@ driver : $(CPP) $(OLEAN) llvm_exports.cpp llvm_lib.cpp driver.cpp
 
 
 driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
-llvm_lib.olean : ast.olean pp.olean parser.lean data_layout.lean
+llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean
 pp.olean : ast.olean
 type_context.olean : ast.olean
 data_layout.olean : ast.olean parser.olean
