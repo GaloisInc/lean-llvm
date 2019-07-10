@@ -52,47 +52,13 @@ structure sim (a:Type) :=
      (a → frame → state → z) /- normal continuation -/ →
      (frame → state → z)).
 
-namespace sim.
+namespace sim
 
-instance functor : Functor sim :=
-  { map := λa b f (m:sim a) => sim.mk (λz conts k =>
-      m.runSim conts (λx => k (f x)))
-
-  , mapConst := λa b x (m:sim b) => sim.mk (λz conts k =>
-      m.runSim conts (λ_ => k x))
-  }.
-
-instance hasPure : HasPure sim :=
-  { pure := λa x => sim.mk (λz _ k => k x) }.
-
-instance hasSeq : HasSeq sim :=
-  { seq := λa b mf mx => sim.mk (λz conts k =>
-          mf.runSim conts (λf =>
-          mx.runSim conts (λx =>
-          k (f x))))
-  }.
-
-instance hasSeqLeft : HasSeqLeft sim :=
-  { seqLeft := λa b mx my => sim.mk (λz conts k =>
-       mx.runSim conts (λx =>
-       my.runSim conts (λ_ =>
-       k x)))
-  }.
-
-instance hasSeqRight : HasSeqRight sim :=
-  { seqRight := λa b mx my => sim.mk (λz conts k =>
-       mx.runSim conts (λ_ =>
-       my.runSim conts (λy =>
-       k y)))
-  }.
-
-instance hasBind : HasBind sim :=
+instance monad : Monad sim :=
   { bind := λa b mx mf => sim.mk (λz conts k =>
        mx.runSim conts (λx => (mf x).runSim conts k))
-  }.
-
-instance applicative : Applicative sim := Applicative.mk _.
-instance monad : Monad sim := Monad.mk _.
+  , pure := λa x => sim.mk (λz _ k => k x)
+  }
 
 instance monadExcept : MonadExcept IO.Error sim :=
   { throw := λa err => sim.mk (λz conts _k _frm _st => conts.kerr err)
@@ -137,7 +103,7 @@ def jump {a} (l:block_label) : sim a :=
 def call (s:symbol) (args:List runtime_value) : sim (Option runtime_value) :=
   sim.mk (λz conts k frm st => conts.kcall (λv => k v frm) s args st).
 
-end sim.
+end sim
 
 def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 
