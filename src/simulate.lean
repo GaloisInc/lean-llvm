@@ -312,8 +312,8 @@ def evalStmt (s:stmt) : sim Unit :=
      | (some i, some v) => sim.assignReg i v
      | (some _, none)   => throw (IO.userError "expected instruction to compute a value").
 
-partial def evalStmts (stmts:Array stmt) : sim Unit := pure () -- FIXME
---  @Array.mfoldl Unit stmt sim (λ_ s => evalStmt s) Unit.unit stmts
+def evalStmts (stmts:Array stmt) : sim Unit :=
+  Array.mfoldl (λ_ s => evalStmt s) () stmts
 
 def findBlock (l:block_label) (func:define) : sim (Array stmt) :=
   match Array.find func.body (λbb =>
@@ -375,7 +375,7 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
       , kcall := execFunc
       , kjump := execBlock zinh kerr kret execFunc
       }
-      (λ_ _ _ => kerr (IO.userError "unreachable code!"))
+      (λ_ _ _ => kerr (IO.userError "unterminated basic block!"))
       (default _)
       st.
 

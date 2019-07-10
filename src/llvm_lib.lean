@@ -496,7 +496,7 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
              match d with
              | none => throw (IO.userError "expected phi instruction")
              | some vs =>
-                 do vs' <- vs.mmap (λvbb:(LLVMValue×BasicBlock) =>
+                 do vs' <- vs.mmap (λ (vbb: LLVMValue×BasicBlock) =>
                             Prod.mk <$> extractValue ctx vbb.1 <*> extractBlockLabel ctx vbb.2);
                     pure (instruction.phi t vs')
 
