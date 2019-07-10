@@ -16,11 +16,11 @@ reserve infixl ` $+$ `: 60
 
 structure doc : Type := (compose : String → String).
 
-def text (x:String) := doc.mk (λz, x ++ z).
+def text (x:String) := doc.mk (fun z => x ++ z).
 def render (x:doc) : String := x.compose "".
 def to_doc {a:Type} [HasToString a] : a → doc := text ∘ toString.
 
-def empty : doc := doc.mk (λ z, z).
+def empty : doc := doc.mk id.
 def next_to (x y : doc) : doc := doc.mk (x.compose ∘ y.compose).
 infix <>  := next_to.
 
@@ -38,13 +38,13 @@ def vcat (xs:List doc) : doc := List.foldr linesep empty xs.
 
 def punctuate (p:doc) : List doc → List doc
 | [ ]     := []
-| (x::xs) := x :: (List.foldr (λ a b, p :: a :: b) [] xs)
+| (x::xs) := x :: (List.foldr (fun a b => p :: a :: b) [] xs)
 .
 
-def nat : ℕ → doc := text ∘ toString
+def nat : Nat → doc := text ∘ toString
 def int : Int → doc := text ∘ toString
 
-def pp_nonzero : ℕ → doc
+def pp_nonzero : Nat → doc
 | Nat.zero := empty
 | n := nat n
 .
@@ -77,9 +77,9 @@ open pp
 section layout_spec.
 open layout_spec.
 
-def pp_layout_body (sz abi:ℕ) (pref: Option ℕ) : doc :=
+def pp_layout_body (sz abi:Nat) (pref: Option Nat) : doc :=
   nat sz <> text ":" <> nat abi <>
-  pp_opt (λx, text ":" <> nat x) pref.
+  pp_opt (λx => text ":" <> nat x) pref.
 
 def pp_align_type : align_type → doc
 | align_type.integer := text "i"
@@ -104,7 +104,7 @@ def pp_layout_spec : layout_spec → doc
      <> nat sz <> text ":"
      <> nat abi <> text ":"
      <> nat pref <> text ":"
-     <> pp_opt (λi, text ":" <> nat i) idx
+     <> pp_opt (λi => text ":" <> nat i) idx
 
 | (align_size tp sz abi pref) :=
      pp_align_type tp <> pp_layout_body sz abi pref
@@ -295,7 +295,7 @@ def pp_const_expr (pp_value : value → doc) : const_expr → doc
 | (const_expr.gep inbounds inrange tp vs) :=
     text "getelementpointer" <+>
     (if inbounds then text "inbounds " else empty) <>
-    parens ( pp_type tp <> comma <+> commas (List.map (λ (v:typed value), pp_type v.type <+> pp_value v.value) vs))
+    parens ( pp_type tp <> comma <+> commas (List.map (λ (v:typed value) => pp_type v.type <+> pp_value v.value) vs))
 
 | (const_expr.conv op x tp) :=
     pp_conv_op op <+> parens (pp_type (typed.type x) <+> pp_value (typed.value x) <+> text "to" <+> pp_type tp)
@@ -338,7 +338,7 @@ partial def pp_md (pp_value : value → doc) : val_md → doc
 | (val_md.string s)  := text "!" <> pp_string_literal s
 | (val_md.value x)   := pp_type (typed.type x) <+> pp_value (typed.value x)
 | (val_md.ref i)     := text "!" <> int i
-| (val_md.node xs)   := text "!" <> braces (commas (List.map (λ mx, Option.casesOn mx (text "null") pp_md) xs))
+| (val_md.node xs)   := text "!" <> braces (commas (List.map (λ mx => Option.casesOn mx (text "null") pp_md) xs))
 | (val_md.loc loc) := pp_debug_loc pp_md loc
 | (val_md.debug_info) := empty
 .
@@ -355,10 +355,10 @@ partial def pp_value : value → doc
 | (value.symbol n)         := pp_symbol n
 | (value.const_expr e)     := pp_const_expr pp_value e
 | (value.label l)          := pp_label l
-| (value.array tp vs)      := brackets (commas (List.map (λv, pp_type tp <+> pp_value v) vs))
-| (value.vector tp vs)     := angles (commas (List.map (λv, pp_type tp <+> pp_value v) vs))
-| (value.struct fs)        := braces (commas (List.map (λ(f : typed value), pp_type f.type <+> pp_value f.value) fs))
-| (value.packed_struct fs) := packed_braces (commas (List.map (λ(f:typed value), pp_type f.type <+> pp_value f.value) fs))
+| (value.array tp vs)      := brackets (commas (List.map (λv => pp_type tp <+> pp_value v) vs))
+| (value.vector tp vs)     := angles (commas (List.map (λv => pp_type tp <+> pp_value v) vs))
+| (value.struct fs)        := braces (commas (List.map (λ(f : typed value) => pp_type f.type <+> pp_value f.value) fs))
+| (value.packed_struct fs) := packed_braces (commas (List.map (λ(f:typed value) => pp_type f.type <+> pp_value f.value) fs))
 | (value.md md)            := pp_md pp_value md
 .
 
@@ -371,28 +371,28 @@ def pp_atomic_ordering : atomic_ordering → doc
 | atomic_ordering.seq_cst   := text "seq_cst"
 .
 
-def pp_align : Option ℕ → doc
+def pp_align : Option Nat → doc
 | (some a) := comma <+> text "align" <+> nat a
 | none     := empty
 .
 
 def pp_scope : Option String → doc :=
-  pp_opt (λnm, text "syncscope" <> parens (pp_string_literal nm))
+  pp_opt (λnm => text "syncscope" <> parens (pp_string_literal nm))
 .
 
 def pp_call (tailcall:Bool) (ty:llvm_type) (f:value) (args:List (typed value)) : doc :=
   (if tailcall then text "tail call" else text "call") <+>
   pp_type ty <+> pp_value f <+>
-  parens (commas (List.map (λ(x:typed value), pp_type x.type <+> pp_value x.value) args))
+  parens (commas (List.map (λ(x:typed value) => pp_type x.type <+> pp_value x.value) args))
 .
 
-def pp_alloca (tp:llvm_type) (len:Option (typed value)) (align:Option ℕ) : doc :=
+def pp_alloca (tp:llvm_type) (len:Option (typed value)) (align:Option Nat) : doc :=
   text "alloca" <+> pp_type tp <>
-  pp_opt (λ v, comma <+> pp_type (typed.type v) <+> pp_value (typed.value v)) len <>
+  pp_opt (λv => comma <+> pp_type (typed.type v) <+> pp_value (typed.value v)) len <>
   pp_align align
 .
 
-def pp_load (ptr:typed value) (ord:Option atomic_ordering) (align : Option ℕ) : doc :=
+def pp_load (ptr:typed value) (ord:Option atomic_ordering) (align : Option Nat) : doc :=
   text "load" <>
   (if Option.isSome ord then text " atomic" else empty) <+>
   pp_type (typed.type ptr) <+> pp_value (typed.value ptr) <>
@@ -400,7 +400,7 @@ def pp_load (ptr:typed value) (ord:Option atomic_ordering) (align : Option ℕ) 
   pp_opt pp_align align
 .
 
-def pp_store (val:typed value) (ptr:typed value) (align:Option ℕ) : doc :=
+def pp_store (val:typed value) (ptr:typed value) (align:Option Nat) : doc :=
   text "store" <+>
   pp_type (typed.type val) <+> pp_value (typed.value val) <> comma <+>
   pp_type (typed.type ptr) <+> pp_value (typed.value ptr) <>
@@ -414,7 +414,7 @@ def pp_phi_arg (vl:value × block_label) : doc :=
 def pp_gep (bounds:Bool) (base:typed value) (xs:List (typed value)) : doc :=
   text "getelementpointer" <>
   (if bounds then text " inbounds" else empty) <+>
-  commas (List.map (λ(x:typed value), pp_type x.type <+> pp_value x.value) (base::xs))
+  commas (List.map (λ(x:typed value) => pp_type x.type <+> pp_value x.value) (base::xs))
 .
 
 def pp_vector_index (v:value) : doc :=
@@ -427,7 +427,7 @@ def pp_typed_label (l:block_label) : doc :=
 
 def pp_invoke (ty:llvm_type) (f:value) (args:List (typed value)) (to:block_label) (uw:block_label) : doc :=
   text "invoke" <+> pp_type ty <+> pp_value f <>
-  parens (commas (List.map (λ(v:typed value), pp_type v.type <+> pp_value v.value) args)) <+>
+  parens (commas (List.map (λ(v:typed value) => pp_type v.type <+> pp_value v.value) args)) <+>
   text "to" <+> pp_typed_label to <+>
   text "unwind" <+> pp_typed_label uw
 .
@@ -444,7 +444,7 @@ def pp_clauses (is_cleanup:Bool) (cs:List (clause × typed value) ): doc :=
     )
 .
 
-def pp_switch_entry (ty:llvm_type) : (ℕ × block_label) → doc
+def pp_switch_entry (ty:llvm_type) : (Nat × block_label) → doc
 | (i, l) := pp_type ty <+> nat i <> comma <+> pp_label l
 .
 
@@ -530,7 +530,7 @@ def pp_instr : instruction → doc
     brackets (hcat (List.map (pp_switch_entry (typed.type c)) ls))
 | (instruction.landing_pad ty mfn c cs) :=
     text "landingpad" <+> pp_type ty <>
-    pp_opt (λv, text " personality" <+> pp_type (typed.type v) <+> pp_value (typed.value v)) mfn <+>
+    pp_opt (λv => text " personality" <+> pp_type (typed.type v) <+> pp_value (typed.value v)) mfn <+>
     pp_clauses c cs
 | (instruction.resume v) :=
     text "resume" <+>
@@ -541,13 +541,13 @@ def pp_instr : instruction → doc
 def pp_stmt (s:stmt) : doc :=
   text "    " <>
   match s.assign with
-  | none :=  (pp_instr s.instr)
-  | (some i) := pp_ident i <+> text "=" <+> pp_instr s.instr
+  | none => (pp_instr s.instr)
+  | (some i) => pp_ident i <+> text "=" <+> pp_instr s.instr
    --  <>   pp_attached_metadata s.metadata
 .
 
 def pp_basic_block (bb:basic_block) : doc :=
-  vcat ([ pp_opt (λ l, pp_label l <> text ":") bb.label ] ++ List.map pp_stmt bb.stmts.toList)
+  vcat ([ pp_opt (λl => pp_label l <> text ":") bb.label ] ++ List.map pp_stmt bb.stmts.toList)
 .
 
 def pp_comdat_name (nm:String) : doc :=
@@ -591,7 +591,7 @@ def pp_declare (d:declare) : doc :=
   pp_symbol d.name <>
   pp_arg_list d.var_args (List.map pp_type d.args.toList) <+>
   hsep (List.map pp_fun_attr d.attrs.toList) <>
-  pp_opt (λnm, text " " <> pp_comdat_name nm) d.comdat
+  pp_opt (λnm => text " " <> pp_comdat_name nm) d.comdat
 .
 
 def pp_linkage : linkage → doc
@@ -637,8 +637,8 @@ def pp_global (g:global) : doc :=
 def pp_global_alias (ga:global_alias) : doc :=
   pp_symbol ga.name <+> text "=" <+>
   (match ga.target with
-   | (value.symbol _) := pp_type ga.type <> text " "
-   | _ := empty
+   | (value.symbol _) => pp_type ga.type <> text " "
+   | _ => empty
   ) <>
   pp_value ga.target
 .
@@ -655,16 +655,16 @@ def pp_define (d:define) : doc :=
   pp_opt pp_linkage d.linkage <+>
   pp_type d.ret_type <+>
   pp_symbol d.name <>
-  pp_arg_list d.var_args (List.map (λ a, pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args.toList) <+>
+  pp_arg_list d.var_args (List.map (λa => pp_type (typed.type a) <+> pp_ident (typed.value a)) d.args.toList) <+>
   hsep (List.map pp_fun_attr d.attrs.toList) <>
-  pp_opt (λs, text " section" <+> pp_string_literal s) d.sec <>
-  pp_opt (λg, text " gc" <+> pp_gc g) d.gc <+>
+  pp_opt (λs => text " section" <+> pp_string_literal s) d.sec <>
+  pp_opt (λg => text " gc" <+> pp_gc g) d.gc <+>
   -- pp_mds d.metadata <+>
   vcat ([ text "{" ] ++ List.map pp_basic_block d.body.toList ++ [ text "}" ])
 .
 
 def pp_module (m:module) : doc :=
-  pp_opt (λnm, text "source_filename = " <> pp_string_literal nm) m.source_name $+$
+  pp_opt (λnm => text "source_filename = " <> pp_string_literal nm) m.source_name $+$
   text "target datalayout = " <> dquotes (pp_layout m.data_layout) $+$
   vcat (List.join
   [ List.map pp_type_decl m.types.toList

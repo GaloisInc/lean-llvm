@@ -10,15 +10,14 @@ namespace llvm
 -- def float : Type 0 := sorry
 -- def double : Type 0 := sorry
 
-
-def strmap (a:Type) := @RBMap String a (λx y, decide (x < y))
+def strmap (a:Type) := @RBMap String a (fun x y => decide (x < y))
 def strmap_empty (a:Type) : strmap a := RBMap.empty
 
 -- Identifiers -----------------------------------------------------------------
 
 inductive ident
 | named  : String → ident
-| anon : ℕ → ident
+| anon : Nat → ident
 .
 
 namespace ident.
@@ -37,31 +36,31 @@ def lt : ident → ident → Prop
 
 instance : HasLess ident := ⟨lt⟩.
 
-instance decideEq : Π(x y:ident), Decidable (x = y)
-| (ident.named a) (ident.named b) := 
+instance decideEq : ∀(x y:ident), Decidable (x = y)
+| (ident.named a) (ident.named b) :=
     (match decEq a b with
-     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
-     | Decidable.isFalse p := Decidable.isFalse (λH, ident.noConfusion H p)
+     | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p => Decidable.isFalse (fun H => ident.noConfusion H p)
     )
 | (ident.anon a) (ident.anon b) :=
     (match decEq a b with
-     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
-     | Decidable.isFalse p := Decidable.isFalse (λH, ident.noConfusion H p)
+     | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p => Decidable.isFalse (fun H => ident.noConfusion H p)
     )
-| (ident.anon _) (ident.named _) := Decidable.isFalse (λH, ident.noConfusion H)
-| (ident.named _) (ident.anon _) := Decidable.isFalse (λH, ident.noConfusion H)
+| (ident.anon _) (ident.named _) := Decidable.isFalse (fun H => ident.noConfusion H)
+| (ident.named _) (ident.anon _) := Decidable.isFalse (fun H => ident.noConfusion H)
 
 
-instance decideLt : Π(x y:ident), Decidable (x < y)
-| (ident.named x) (ident.named y) := 
+instance decideLt : ∀(x y:ident), Decidable (x < y)
+| (ident.named x) (ident.named y) :=
   (match String.decLt x y with
-   | Decidable.isTrue p  := Decidable.isTrue p
-   | Decidable.isFalse p := Decidable.isFalse (λH, p H)
+   | Decidable.isTrue  p => Decidable.isTrue p
+   | Decidable.isFalse p => Decidable.isFalse p
    )
 | (ident.anon x) (ident.anon y) :=
   (match Nat.decLt x y with
-   | Decidable.isTrue p  := Decidable.isTrue p
-   | Decidable.isFalse p := Decidable.isFalse (λH, p H)
+   | Decidable.isTrue  p => Decidable.isTrue p
+   | Decidable.isFalse p => Decidable.isFalse p
    )
 | (ident.named _) (ident.anon _)  := Decidable.isTrue True.intro
 | (ident.anon _)  (ident.named _) := Decidable.isFalse False.elim
@@ -91,17 +90,17 @@ inductive endian
 -- The labels are mainly for documentation, taken from parseSpecifier
 inductive layout_spec
   | endianness : endian → layout_spec
-  | pointer_size  (address_space : ℕ)
-                  (size : ℕ)
-                  (abi_align : ℕ)
-                  (pref_align : ℕ)
-                  (index_size : Option ℕ) : layout_spec
-  | align_size    (align_type : align_type) (size : ℕ)
-                  (abi_align : ℕ) (pref_align : Option ℕ) : layout_spec
-  | native_int_size (legal_widths : List ℕ)     : layout_spec
-  | stack_align    : ℕ -> layout_spec
-  | function_address_space : ℕ -> layout_spec
-  | stack_alloca  : ℕ -> layout_spec
+  | pointer_size  (address_space : Nat)
+                  (size : Nat)
+                  (abi_align : Nat)
+                  (pref_align : Nat)
+                  (index_size : Option Nat) : layout_spec
+  | align_size    (align_type : align_type) (size : Nat)
+                  (abi_align : Nat) (pref_align : Option Nat) : layout_spec
+  | native_int_size (legal_widths : List Nat)     : layout_spec
+  | stack_align    : Nat -> layout_spec
+  | function_address_space : Nat -> layout_spec
+  | stack_alloca  : Nat -> layout_spec
   | mangling : mangling -> layout_spec
 .
 
@@ -118,7 +117,7 @@ inductive float_type
 inductive prim_type
   | label
   | void
-  | integer : ℕ -> prim_type
+  | integer : Nat -> prim_type
   | float_type : float_type -> prim_type
   | x86mmx
   | metadata
@@ -126,12 +125,12 @@ inductive prim_type
 inductive llvm_type
   | prim_type : prim_type -> llvm_type
   | alias : String -> llvm_type
-  | array : ℕ -> llvm_type -> llvm_type
+  | array : Nat -> llvm_type -> llvm_type
   | fun_ty : llvm_type -> List llvm_type -> Bool -> llvm_type
   | ptr_to : llvm_type -> llvm_type
   | struct : List llvm_type -> llvm_type
   | packed_struct : List llvm_type -> llvm_type
-  | vector : ℕ -> llvm_type -> llvm_type
+  | vector : Nat -> llvm_type -> llvm_type
   | opaque : llvm_type
 
 -- Top-level Type Aliases ------------------------------------------------------
@@ -146,24 +145,24 @@ structure symbol := (symbol : String)
 
 inductive block_label
   | named : String -> block_label
-  | anon : ℕ -> block_label
+  | anon : Nat -> block_label
 
 
 namespace block_label.
 
-instance decideEq : Π(x y:block_label), Decidable (x = y)
-| (block_label.named a) (block_label.named b) := 
+instance decideEq : ∀(x y:block_label), Decidable (x = y)
+| (block_label.named a) (block_label.named b) :=
     (match decEq a b with
-     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
-     | Decidable.isFalse p := Decidable.isFalse (λH, block_label.noConfusion H p)
+     | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p => Decidable.isFalse (fun H => block_label.noConfusion H p)
     )
 | (block_label.anon a) (block_label.anon b) :=
     (match decEq a b with
-     | Decidable.isTrue p  := Decidable.isTrue (congrArg _ p)
-     | Decidable.isFalse p := Decidable.isFalse (λH, block_label.noConfusion H p)
+     | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
+     | Decidable.isFalse p => Decidable.isFalse (fun H => block_label.noConfusion H p)
     )
-| (block_label.anon _) (block_label.named _) := Decidable.isFalse (λH, block_label.noConfusion H)
-| (block_label.named _) (block_label.anon _) := Decidable.isFalse (λH, block_label.noConfusion H)
+| (block_label.anon _) (block_label.named _) := Decidable.isFalse (fun H => block_label.noConfusion H)
+| (block_label.named _) (block_label.anon _) := Decidable.isFalse (fun H => block_label.noConfusion H)
 .
 
 end block_label.
@@ -285,7 +284,7 @@ with value : Type
 
 with const_expr : Type
   | select : typed value -> typed value -> typed value -> const_expr
-  | gep : Bool -> Option ℕ -> llvm_type -> List (typed value) -> const_expr
+  | gep : Bool -> Option Nat -> llvm_type -> List (typed value) -> const_expr
   | conv : conv_op -> typed value -> llvm_type -> const_expr
   | arith : arith_op -> typed value -> value -> const_expr
   | fcmp : fcmp_op -> typed value -> typed value -> const_expr
@@ -296,15 +295,15 @@ with const_expr : Type
 with val_md : Type
   | string : String -> val_md
   | value : typed value -> val_md
-  | ref : ℕ -> val_md
+  | ref : Nat -> val_md
   | node : List (Option val_md) -> val_md
   | loc : debug_loc -> val_md
   | debug_info : val_md -- FIXME , just a placeholder for now
 
 with debug_loc : Type
   | debug_loc
-   ( line  : ℕ )
-   ( col   : ℕ )
+   ( line  : Nat )
+   ( col   : Nat )
    ( scope : val_md )
    ( IA    : Option val_md )
    : debug_loc
@@ -316,7 +315,7 @@ inductive instruction : Type
   | arith : arith_op -> typed value -> value -> instruction
   | bit : bit_op -> typed value -> value -> instruction
   | conv : conv_op -> typed value -> llvm_type -> instruction
-  | call : Π(tailcall : Bool), llvm_type -> value -> List (typed value) -> instruction
+  | call (tailcall : Bool) : llvm_type -> value -> List (typed value) -> instruction
   | alloca : llvm_type -> Option (typed value) -> Option Nat -> instruction
   | load : typed value -> Option atomic_ordering -> Option Nat /- align -/ -> instruction
   | store : typed value -> typed value -> Option Nat /- align -/ -> instruction
@@ -332,8 +331,8 @@ inductive instruction : Type
   | phi : llvm_type -> Array (value × block_label) -> instruction
   | gep (bounds : Bool) : typed value -> List (typed value) -> instruction
   | select : typed value -> typed value -> value -> instruction
-  | extract_value : typed value -> List ℕ -> instruction
-  | insert_value : typed value -> typed value -> List ℕ -> instruction
+  | extract_value : typed value -> List Nat -> instruction
+  | insert_value : typed value -> typed value -> List Nat -> instruction
   | extract_elt : typed value -> value -> instruction
   | insert_elt : typed value -> typed value -> value -> instruction
   | shuffle_vector : typed value -> value -> typed value -> instruction
@@ -345,7 +344,7 @@ inductive instruction : Type
   | unwind
   | va_arg : typed value -> llvm_type -> instruction
   | indirect_br : typed value -> List block_label -> instruction
-  | switch : typed value -> block_label -> List (ℕ × block_label) -> instruction
+  | switch : typed value -> block_label -> List (Nat × block_label) -> instruction
   | landing_pad : llvm_type -> Option (typed value) -> Bool -> List (clause × typed value) -> instruction
   | resume : typed value -> instruction
 
@@ -353,12 +352,12 @@ inductive instruction : Type
 
 structure named_md :=
   ( name   : String)
-  ( values : List ℕ)
+  ( values : List Nat)
 
 -- Unnamed Metadata ------------------------------------------------------------
 
 structure unnamed_md :=
-  ( index  : ℕ)
+  ( index  : Nat)
   ( values : val_md)
   ( distinct : Bool)
 
@@ -404,11 +403,11 @@ structure global :=
   ( attrs : global_attrs             )
   ( type  : llvm_type                )
   ( value : Option value            )
-  ( align : Option ℕ              )
+  ( align : Option Nat              )
   ( metadata : strmap val_md )
 
 inductive fun_attr
-   | align_stack : ℕ -> fun_attr
+   | align_stack : Nat -> fun_attr
    | alwaysinline
    | builtin
    | cold

@@ -10,11 +10,11 @@ open llvm.
 
 def main (xs : List String) : IO UInt32 := do
 
-  ctx ← newLLVMContext,
-  mb ← newMemoryBufferFromFile xs.head,
-  m ← parseBitcodeFile mb ctx >>= extractModule,
+  ctx ← newLLVMContext;
+  mb ← newMemoryBufferFromFile xs.head;
+  m ← parseBitcodeFile mb ctx >>= extractModule;
 
-  IO.println (pp.render (pp_module m)),
+  IO.println (pp.render (pp_module m));
 
   let res :=
      runFunc (symbol.mk "fib")
@@ -22,9 +22,8 @@ def main (xs : List String) : IO UInt32 := do
              ]
              (state.mk RBMap.empty m) in
   match res with
-  | (Sum.inl err) := throw err
-  | (Sum.inr (runtime_value.int _ x, _)) :=
-       do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString),
+  | (Sum.inl err) => throw err
+  | (Sum.inr (runtime_value.int _ x, _)) =>
+       do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString);
           pure 0
-  | _ := pure 0
-
+  | _ => pure 0

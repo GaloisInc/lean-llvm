@@ -1,6 +1,17 @@
 
-LEAN_HOME=$(HOME)/code/lean4
-LLVM_HOME=$(HOME)/build/llvm-8.0.0.src/
+LEAN_HOME=$(HOME)/opt/lean4
+LLVM_HOME=$(HOME)/opt/llvm-8.0.0
+
+LEAN:=$(LEAN_HOME)/bin/lean
+LEANC:=$(LEAN_HOME)/bin/leanc
+LEAN_INCLUDE:=$(LEAN_HOME)/include
+
+LLVM_INCLUDE:=$(LLVM_HOME)/include
+LLVM_LIB=$(LLVM_HOME)/lib
+
+#LEAN_HOME=$(HOME)/code/lean4
+#LLVM_HOME?=$(HOME)/build/llvm-8.0.0.src/
+
 CLANG=clang++
 
 SOURCES := ast.lean\
@@ -20,13 +31,13 @@ OBJS=$(SOURCES:.cpp=.o)
 all : driver
 
 driver : $(CPP) $(OLEAN) llvm_exports.cpp driver.cpp
-	$(LEAN_HOME)/bin/leanc -O1 -g -L$(LLVM_HOME)/build/lib -I$(LLVM_HOME)/include -I$(LLVM_HOME)/build/include -I$(LEAN_HOME)/src -I$(LEAN_HOME)/src/runtime -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader -o "driver" llvm_exports.cpp $(CPP)
+	$(LEANC) -O1 -g -L$(LLVM_LIB) -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader -o "driver" llvm_exports.cpp $(CPP)
 
 %.cpp:	%.lean %.olean
-	$(LEAN_HOME)/bin/lean -c $@ $<
+	$(LEAN) -c $@ $<
 
 %.olean: %.lean
-	$(LEAN_HOME)/bin/lean --make $<
+	$(LEAN) --make $<
 
 
 driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
@@ -37,9 +48,8 @@ data_layout.olean : ast.olean parser.olean
 simulate.olean : ast.olean bv.olean pp.olean type_context.olean
 
 clean:
-	- rm $(CPP)
-	- rm *.o
-	- rm *.olean
+	- rm -f $(CPP)
+	- rm -f *.olean
 
 
 .PHONY : clean all

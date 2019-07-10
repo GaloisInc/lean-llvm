@@ -4,20 +4,20 @@ import .parser
 
 namespace llvm.parse.
 
-def pointer_spec : parse llvm.layout_spec := 
+def pointer_spec : parse llvm.layout_spec :=
   parse.describe "pointer spec spec" $
-  do addrSpace <- parse.opt 0 parse.nat,
-     sz   <- parse.text ":" *> parse.nat,
-     abi  <- parse.text ":" *> parse.nat,
-     pref <- parse.text ":" *> parse.nat,
-     idx  <- parse.opt' (parse.text ":" *> parse.nat),
+  do addrSpace <- parse.opt 0 parse.nat;
+     sz   <- parse.text ":" *> parse.nat;
+     abi  <- parse.text ":" *> parse.nat;
+     pref <- parse.text ":" *> parse.nat;
+     idx  <- parse.opt' (parse.text ":" *> parse.nat);
      pure (llvm.layout_spec.pointer_size addrSpace sz abi pref idx).
 
-def size_spec (t:llvm.align_type) : parse llvm.layout_spec := 
+def size_spec (t:llvm.align_type) : parse llvm.layout_spec :=
   parse.describe "size spec" $
-  do sz   <- parse.nat,
-     abi  <- parse.text ":" *> parse.nat,
-     pref <- parse.opt' (parse.text ":" *> parse.nat),
+  do sz   <- parse.nat;
+     abi  <- parse.text ":" *> parse.nat;
+     pref <- parse.opt' (parse.text ":" *> parse.nat);
      pure (llvm.layout_spec.align_size t sz abi pref).
 
 def mangling_spec : parse llvm.mangling :=
@@ -60,6 +60,6 @@ structure data_layout :=
   ( int_layout : endian )
 .
 
-  
+
 
 end llvm.

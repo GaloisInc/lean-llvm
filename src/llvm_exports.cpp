@@ -5,9 +5,9 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 
-#include "apply.h"
-#include "mpz.h"
-#include "object.h"
+#include "runtime/apply.h"
+#include "runtime/mpz.h"
+#include "runtime/object.h"
 #include <iostream>
 
 ////////////////////////////////////////////////////////////////////////
