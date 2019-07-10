@@ -7,6 +7,16 @@ import .pp
 import .parser
 import .data_layout
 
+namespace Option
+  universes u v.
+
+  def mmap {m:Type u → Type v} {α β:Type u} [Applicative m] (f:α → m β) : Option α → m (Option β)
+  | none := pure none
+  | (some x) := some <$> f x
+  .
+
+end Option.
+
 -- Type for pointers
 --
 -- USize compiles to a size_t when unboxed.  Technically pointers
@@ -90,6 +100,9 @@ def getTypeTag : @& LLVMType -> IO ℕ := default _
 @[extern 2 cpp "lean_llvm::getIntegerTypeWidth"]
 def getIntegerTypeWidth : @& LLVMType -> IO ℕ := default _
 
+@[extern 2 cpp "lean_llvm::getPointerElementType"]
+def getPointerElementType : @& LLVMType -> IO (Option LLVMType) := default _
+
 @[extern 2 cpp "lean_llvm::getInstructionArray"]
 def getInstructionArray : @& BasicBlock -> IO (Array Instruction) := default _
 
@@ -148,6 +161,15 @@ def getPhiData : @& Instruction -> IO (Option (Array (LLVMValue × BasicBlock)))
 @[extern 2 cpp "lean_llvm::getCastInstData"]
 def getCastInstData : @& Instruction -> IO (Option (ℕ × LLVMValue)) := default _
 
+@[extern 2 cpp "lean_llvm::getAllocaData"]
+def getAllocaData : @& Instruction -> IO (Option (LLVMType × (Option LLVMValue × Option ℕ))) := default _
+
+@[extern 2 cpp "lean_llvm::getStoreData"]
+def getStoreData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue × Option ℕ))) := default _
+
+@[extern 2 cpp "lean_llvm::getLoadData"]
+def getLoadData : @& Instruction -> IO (Option (LLVMValue × Option ℕ)) := default _
+
 namespace llvm.
 
 def typeIsVoid (tp : LLVMType) : IO Bool :=
@@ -157,7 +179,8 @@ def typeIsVoid (tp : LLVMType) : IO Bool :=
      | _ := pure false
 .
 
-def extractType (tp : LLVMType) : IO llvm_type :=
+partial def extractType : LLVMType → IO llvm_type
+| tp :=
   do id <- getTypeTag tp,
      match id with
      | 0 := pure (llvm_type.prim_type prim_type.void)
@@ -176,7 +199,11 @@ def extractType (tp : LLVMType) : IO llvm_type :=
      | 12 := pure llvm_type.opaque -- functions
      | 13 := pure llvm_type.opaque -- structures
      | 14 := pure llvm_type.opaque -- arrays
-     | 15 := pure llvm_type.opaque -- pointers
+     | 15 := (do eltp <- getPointerElementType tp,
+                 match eltp with
+                 | none := throw (IO.userError "expected pointer type!")
+                 | (some x) := llvm_type.ptr_to <$> extractType x
+             )
      | 16 := pure llvm_type.opaque -- vectors
      | _  := pure llvm_type.opaque -- other...
 .
@@ -245,7 +272,7 @@ def extractConstant (rawc:LLVMConstant) : IO value :=
       | (some (_w, v)) := pure (value.integer (Int.ofNat v))
       | none := throw (IO.userError "unknown constant value"))
 
-def extractValue (rawv:LLVMValue) (ctx:value_context) : IO value :=
+def extractValue (ctx:value_context) (rawv:LLVMValue) : IO value :=
   do decmp <- decomposeValue rawv,
      match decmp with
      | (value_decomposition.argument_value n) :=
@@ -264,15 +291,15 @@ def extractValue (rawv:LLVMValue) (ctx:value_context) : IO value :=
      | _ := throw (IO.userError "unknown value")
 .
 
-def extractBlockLabel (bb:BasicBlock) (ctx:value_context) : IO block_label :=
+def extractBlockLabel (ctx:value_context) (bb:BasicBlock) : IO block_label :=
   match RBMap.find ctx.bmap bb with
   | none := throw (IO.userError "unknown basic block")
   | (some lab) := pure lab.
 
 
-def extractTypedValue (rawv:LLVMValue) (ctx:value_context) : IO (typed value) :=
+def extractTypedValue (ctx:value_context) (rawv:LLVMValue) : IO (typed value) :=
   do tp <- getValueType rawv >>= extractType,
-     v  <- extractValue rawv ctx,
+     v  <- extractValue ctx rawv,
      pure (typed.mk tp v)
  .
 
@@ -281,8 +308,8 @@ def extractBinaryOp (rawInstr:Instruction) (ctx:value_context) (f:typed value �
   match x with
   | none := throw (IO.userError "expected binary operation")
   | (some (o1,o2)) :=
-     do v1 <- extractTypedValue o1 ctx,
-        v2 <- extractTypedValue o2 ctx,
+     do v1 <- extractTypedValue ctx o1,
+        v2 <- extractTypedValue ctx o2,
         pure (f v1 v2.value)
 .
 
@@ -291,7 +318,7 @@ def extractCastOp (rawinstr:Instruction) (ctx:value_context) (f:typed value → 
   match x with
   | none := throw (IO.userError "expected conversion instruction")
   | (some (_op, v)) :=
-      do tv <- extractTypedValue v ctx,
+      do tv <- extractTypedValue ctx v,
          outty <- getInstructionType rawinstr >>= extractType,
          pure (f tv outty)
 
@@ -321,7 +348,7 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
                (match mv with
                 | none := pure instruction.ret_void
                 | (some v) :=
-                  do tyv <- extractTypedValue v ctx,
+                  do tyv <- extractTypedValue ctx v,
                      pure (instruction.ret tyv)
                )
 
@@ -331,11 +358,11 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
            (match d with
             | none := throw (IO.userError "expected branch instruction")
             | (some (branch_decomposition.unconditional b)) :=
-                instruction.jump <$> extractBlockLabel b ctx
+                instruction.jump <$> extractBlockLabel ctx b
             | (some (branch_decomposition.conditional c t f)) :=
-                do cv <- extractTypedValue c ctx,
-                   tl <- extractBlockLabel t ctx,
-                   fl <- extractBlockLabel f ctx,
+                do cv <- extractTypedValue ctx c,
+                   tl <- extractBlockLabel ctx t,
+                   fl <- extractBlockLabel ctx f,
                    pure (instruction.br cv tl fl)
             )
 
@@ -401,6 +428,35 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
      -- xor
      | 29 := extractBinaryOp rawinstr ctx (instruction.bit bit_op.xor)
 
+     -- alloca
+     | 30 := getAllocaData rawinstr >>= λmd,
+          (match md with
+           | none := throw (IO.userError "Expected alloca instruction")
+           | (some (tp, nelts, align)) :=
+           do tp' <- extractType tp,
+              nelts' <- Option.mmap (extractTypedValue ctx) nelts,
+              pure (instruction.alloca tp' nelts' align)
+          )
+
+     -- load
+     | 31 := getLoadData rawinstr >>= λmd,
+          (match md with
+           | none := throw (IO.userError "Expected load instruction")
+           | (some (ptr, align)) :=
+             do ptr' <- extractTypedValue ctx ptr,
+                pure (instruction.load ptr' none align) -- TODO atomic ordering
+          )
+
+     -- store
+     | 32 := getStoreData rawinstr >>= λmd,
+          (match md with
+           | none := throw (IO.userError "Expected store instruction")
+           | (some (val,ptr,align)) :=
+           do val' <- extractTypedValue ctx val,
+              ptr' <- extractTypedValue ctx ptr,
+              pure (instruction.store val' ptr' align)
+          )
+
      -- trunc
      | 37 := extractCastOp rawinstr ctx (instruction.conv conv_op.trunc)
      -- zext
@@ -432,8 +488,8 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
              (match d with
               | none := throw (IO.userError "expected icmp instruction")
               | (some (code, (v1, v2))) :=
-                do o1 <- extractTypedValue v1 ctx,
-                   o2 <- extractTypedValue v2 ctx,
+                do o1 <- extractTypedValue ctx v1,
+                   o2 <- extractTypedValue ctx v2,
                    op <- extractICmpOp code,
                    pure (instruction.icmp op o1 o2.value))
 
@@ -445,7 +501,7 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
               | none := throw (IO.userError "expected phi instruction")
               | some vs :=
                   do vs' <- Array.mmap (λvbb:(LLVMValue×BasicBlock),
-                             Prod.mk <$> extractValue vbb.1 ctx <*> extractBlockLabel vbb.2 ctx) vs,
+                             Prod.mk <$> extractValue ctx vbb.1 <*> extractBlockLabel ctx vbb.2) vs,
                      pure (instruction.phi t vs')
               )
 
@@ -455,9 +511,9 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
              (match d with
               | none := throw (IO.userError "expected select instruction")
               | (some (vc, (vt,ve))) :=
-                do c <- extractTypedValue vc ctx,
-                   t <- extractTypedValue vt ctx,
-                   e <- extractTypedValue ve ctx,
+                do c <- extractTypedValue ctx vc,
+                   t <- extractTypedValue ctx vt,
+                   e <- extractTypedValue ctx ve,
                    pure (instruction.select c t e.value)
              )
 

@@ -335,6 +335,17 @@ obj_res getIntegerTypeWidth( b_obj_arg tp_obj, obj_arg r ) {
   return set_io_result( r, w_obj );
 }
 
+obj_res getPointerElementType( b_obj_arg tp_obj, obj_arg r) {
+  Type* tp = static_cast<Type*>(external_data(tp_obj));
+  PointerType *pt = dyn_cast<PointerType>(tp);
+  if( pt ) {
+    Type* elt_tp = pt->getElementType();
+    obj_res elt_tp_obj = alloc_external( getTrivialObjectClass(), elt_tp );
+    return set_io_result( r, mk_option_some( elt_tp_obj ));
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
 
 uint8_t instructionLt( b_obj_arg i1_obj, b_obj_arg i2_obj ) {
   Instruction *i1 = static_cast<Instruction*>(external_data(i1_obj));
@@ -489,6 +500,84 @@ obj_res getPhiData( b_obj_arg i_obj, obj_arg r ) {
     }
 
     return set_io_result( r, mk_option_some(arr) );
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
+
+obj_res getAllocaData( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  AllocaInst *ai = dyn_cast<AllocaInst>(i);
+  if ( ai ) {
+    Type* tp = ai->getAllocatedType();
+    obj_res tp_obj = alloc_external( getTrivialObjectClass(), tp );
+
+    obj_res nelems;
+    if( ai->isArrayAllocation() ) {
+      Value* v = ai->getArraySize();
+      nelems = mk_option_some( alloc_external( getTrivialObjectClass(), v ) );
+    } else {
+      nelems = mk_option_none();
+    }
+
+    obj_res align = mk_option_some( box( ai->getAlignment() ) );
+
+    obj_res tuple = alloc_cnstr( 0, 2, 0 );
+    obj_res pair  = alloc_cnstr( 0, 2, 0 );
+
+    cnstr_set( tuple, 0, tp_obj );
+    cnstr_set( tuple, 1, pair );
+
+    cnstr_set( pair, 0, nelems );
+    cnstr_set( pair, 1, align );
+
+    return set_io_result( r, mk_option_some( tuple ) );
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
+
+obj_res getStoreData ( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  StoreInst* si = dyn_cast<StoreInst>(i);
+  if( si ) {
+    Value* val = si->getValueOperand();
+    Value* ptr = si->getPointerOperand();
+
+    obj_res val_obj = alloc_external( getTrivialObjectClass(), val );
+    obj_res ptr_obj = alloc_external( getTrivialObjectClass(), ptr );
+    obj_res align = mk_option_some( box( si->getAlignment() ));
+
+    obj_res tuple = alloc_cnstr( 0, 2, 0 );
+    obj_res pair  = alloc_cnstr( 0, 2, 0 );
+
+    cnstr_set( tuple, 0, val_obj );
+    cnstr_set( tuple, 1, pair );
+
+    cnstr_set( pair, 0, ptr_obj );
+    cnstr_set( pair, 1, align );
+
+    return set_io_result( r, mk_option_some( tuple ) );
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
+
+obj_res getLoadData ( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  LoadInst* li = dyn_cast<LoadInst>(i);
+  if( li ) {
+    Value* ptr = li->getPointerOperand();
+
+    obj_res ptr_obj = alloc_external( getTrivialObjectClass(), ptr );
+    obj_res align = mk_option_some( box( li->getAlignment() ) );
+
+    obj_res pair  = alloc_cnstr( 0, 2, 0 );
+
+    cnstr_set( pair, 0, ptr_obj );
+    cnstr_set( pair, 1, align );
+
+    return set_io_result( r, mk_option_some( pair ) );
   }
 
   return set_io_result( r, mk_option_none() );
