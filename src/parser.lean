@@ -23,41 +23,11 @@ structure parse (α:Type) :=
 
 namespace parse.
 
-instance functor : Functor parse :=
-  { map := λa b f (m:parse a) => parse.mk (λz kerr kfail k =>
-              m.runParse z kerr kfail (λx => k (f x)))
-  , mapConst := λa b x (m:parse b) => parse.mk (λz kerr kfail k =>
-              m.runParse z kerr kfail (λ_ => k x))
-  }.
-
-instance hasPure : HasPure parse :=
-  { pure := λa x => parse.mk (λz kerr kfail k => k x) }.
-
-instance hasSeq : HasSeq parse :=
-  { seq := λa b mf mx => parse.mk (λz kerr kfail k =>
-             mf.runParse z kerr kfail (λf =>
-             mx.runParse z kerr kfail (λx =>
-             k (f x))))
-  }.
-
-instance hasSeqLeft : HasSeqLeft parse :=
-  { seqLeft := λa b mx my => parse.mk (λz kerr kfail k =>
-             mx.runParse z kerr kfail (λx =>
-             my.runParse z kerr kfail (λ_ =>
-             k x)))
-  }.
-
-instance hasSeqRight : HasSeqRight parse :=
-  { seqRight := λa b mx my => parse.mk (λz kerr kfail k =>
-             mx.runParse z kerr kfail (λ_ =>
-             my.runParse z kerr kfail (λy =>
-             k y)))
-  }.
-
-instance hasBind : HasBind parse :=
+instance monad : Monad parse :=
   { bind := λa b mx mf => parse.mk (λz kerr kfail k =>
               mx.runParse z kerr kfail (λx =>
                 (mf x).runParse z kerr kfail k))
+  , pure := λa x => parse.mk (λz kerr kfail k => k x) 
   }.
 
 instance alternative : Alternative parse :=
@@ -65,9 +35,6 @@ instance alternative : Alternative parse :=
   , orelse  := λa ma mb => parse.mk (λz kerr kfail k stk str =>
       ma.runParse z kerr (λ_ _ => mb.runParse z kerr kfail k stk str) k stk str)
   }.
-
-instance applicative : Applicative parse := Applicative.mk _.
-instance monad : Monad parse := Monad.mk _.
 
 def run {α} (m:parse α) : String → (List String × String) ⊕ α :=
   m.runParse _
