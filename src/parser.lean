@@ -69,7 +69,7 @@ instance alternative : Alternative parse :=
 instance applicative : Applicative parse := Applicative.mk _.
 instance monad : Monad parse := Monad.mk _.
 
-def run {α} (m:parse α) : String → (List String × String) ⊕ α :=
+def run {α} (m:parse α) : String → Sum (List String × String) α :=
   m.runParse _
     (λstk str => Sum.inl (stk,str))
     (λstk str => Sum.inl (stk,str))

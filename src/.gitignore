@@ -2,12 +2,4 @@
 *.ll
 driver
 driver.dSYM
-ast.cpp
-bv.cpp
-data_layout.cpp
-driver.cpp
-llvm_lib.cpp
-parser.cpp
-pp.cpp
-simulate.cpp
-type_context.cpp
+build

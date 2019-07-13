@@ -345,7 +345,7 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
       (default _)
       st.
 
-def runFunc : symbol → List runtime_value → state → IO.Error ⊕ (Option runtime_value × state) :=
+def runFunc : symbol → List runtime_value → state → Sum IO.Error (Option runtime_value × state) :=
   execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λov st => Sum.inr (ov,st)).
 
 end llvm.

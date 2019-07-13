@@ -19,37 +19,38 @@ SOURCES := ast.lean\
   driver.lean\
   pp.lean\
   data_layout.lean\
+  llvm_ffi.lean \
   llvm_lib.lean\
   simulate.lean\
   parser.lean\
   type_context.lean
 
 OLEAN=$(SOURCES:.lean=.olean)
-CPP=$(SOURCES:.lean=.cpp)
-OBJS=$(SOURCES:.cpp=.o)
+CPP=$(patsubst %.lean,build/%.cpp,$(SOURCES))
 
 all : driver
 
-driver : $(CPP) $(OLEAN) llvm_exports.cpp driver.cpp
+driver : $(CPP) $(OLEAN) llvm_exports.cpp
 	$(LEANC) -O1 -g -L$(LLVM_LIB) -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader -o "driver" llvm_exports.cpp $(CPP)
 
-%.cpp:	%.lean %.olean
+build/%.cpp: %.lean %.olean build
 	$(LEAN) -c $@ $<
+
+build :
+	mkdir -p $@
 
 %.olean: %.lean
 	$(LEAN) --make $<
 
-
 driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
-llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean
+llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean llvm_ffi.olean
 pp.olean : ast.olean
 type_context.olean : ast.olean
 data_layout.olean : ast.olean parser.olean
 simulate.olean : ast.olean bv.olean pp.olean type_context.olean
 
 clean:
-	- rm -f $(CPP)
+	- rm -rf build
 	- rm -f *.olean
-
 
 .PHONY : clean all
