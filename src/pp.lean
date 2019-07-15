@@ -295,7 +295,7 @@ def pp_const_expr (pp_value : value → doc) : const_expr → doc
 | (const_expr.gep inbounds inrange tp vs) :=
     text "getelementpointer" <+>
     (if inbounds then text "inbounds " else empty) <>
-    parens ( pp_type tp <> comma <+> commas (List.map (λ (v:typed value) => pp_type v.type <+> pp_value v.value) vs))
+    parens ( pp_type tp <> comma <+> commas (List.map (λ (v:typed value) => pp_type v.type <+> pp_value v.value) vs.toList))
 
 | (const_expr.conv op x tp) :=
     pp_conv_op op <+> parens (pp_type (typed.type x) <+> pp_value (typed.value x) <+> text "to" <+> pp_type tp)
@@ -471,7 +471,7 @@ def pp_instr : instruction → doc
     pp_value y
 | (instruction.phi ty vls) :=
     text "phi" <+> pp_type ty <+> commas (List.map pp_phi_arg vls.toList)
-| (instruction.gep bounds base args) := pp_gep bounds base args
+| (instruction.gep bounds base args) := pp_gep bounds base args.toList
 | (instruction.select cond x y) :=
     text "select" <+>
     pp_type (typed.type cond) <+> pp_value (typed.value cond) <> comma <+>

@@ -603,6 +603,41 @@ obj_res getCastInstData( b_obj_arg i_obj, obj_arg r ) {
   return set_io_result( r, mk_option_none() );
 }
 
+obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
+  Instruction *i = static_cast<Instruction*>(external_data(i_obj));
+  GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(i);
+  if( gep ) {
+    obj_res inbounds;
+    if( gep->isInBounds() ) {
+      inbounds = alloc_cnstr( 1, 0, 0 );
+    } else {
+      inbounds = alloc_cnstr( 0, 0, 0 );
+    }
+
+    Value* base = gep->getPointerOperand();
+    obj_res base_obj = alloc_external( getTrivialObjectClass(), base );
+
+    obj_res tuple = alloc_cnstr( 0, 2, 0 );
+    obj_res pair = alloc_cnstr( 0, 2, 0 );
+
+    obj_res arr = alloc_array( 0, 0 );
+
+    for( Use &u : gep->indices() ) {
+      obj_res v_ob = alloc_external( getTrivialObjectClass(), u.get() );
+      arr = array_push( arr, v_ob );
+    }
+
+    cnstr_set( tuple, 0, inbounds );
+    cnstr_set( tuple, 1, pair );
+
+    cnstr_set( pair, 0, base_obj );
+    cnstr_set( pair, 1, arr );
+
+    return set_io_result( r, mk_option_some( tuple ) );
+  }
+
+  return set_io_result( r, mk_option_none() );
+}
 
 obj_res getSelectInstData( b_obj_arg i_obj, obj_arg r ) {
   Instruction *i = static_cast<Instruction*>(external_data(i_obj));
