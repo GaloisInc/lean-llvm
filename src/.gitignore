@@ -2,4 +2,5 @@
 *.ll
 driver
 driver.dSYM
+orc_test
 build

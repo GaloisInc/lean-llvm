@@ -9,6 +9,11 @@ LEAN_INCLUDE:=$(LEAN_HOME)/include
 LLVM_INCLUDE:=$(LLVM_HOME)/include
 LLVM_LIB=$(LLVM_HOME)/lib
 
+LLVM_LIBS := $(shell llvm-config --libs)
+CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
+
+CXX_FLAGS=-O1 -g
+
 #LEAN_HOME=$(HOME)/code/lean4
 #LLVM_HOME?=$(HOME)/build/llvm-8.0.0.src/
 
@@ -16,7 +21,6 @@ CLANG=clang++
 
 SOURCES := ast.lean\
   bv.lean\
-  driver.lean\
   pp.lean\
   data_layout.lean\
   llvm_ffi.lean \
@@ -27,13 +31,27 @@ SOURCES := ast.lean\
 
 OLEAN=$(SOURCES:.lean=.olean)
 CPP=$(patsubst %.lean,build/%.cpp,$(SOURCES))
+OBJ=$(patsubst %.lean,build/%.o,$(SOURCES))
 
-all : driver
+all : driver orc_test
 
-driver : $(CPP) $(OLEAN) llvm_exports.cpp
-	$(LEANC) -O1 -g -L$(LLVM_LIB) -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) -lLLVMCore -lLLVMSupport -lLLVMBinaryFormat -lLLVMDemangle -ltermcap -lLLVMBitReader -o "driver" llvm_exports.cpp $(CPP)
+build/%.o : build/%.cpp
+	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
 
-build/%.cpp: %.lean %.olean build
+build/llvm_exports.o : llvm_exports.h
+build/clang_exports.o : llvm_exports.h
+
+
+build/%.o : %.cpp
+	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+
+driver : $(OBJ) $(OLEAN) build/driver.o build/llvm_exports.o
+	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $(OBJ) build/driver.o build/llvm_exports.o
+
+orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_exports.o  build/clang_exports.o
+	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap build/orc_test.o build/llvm_ffi.o build/llvm_exports.o build/clang_exports.o
+
+build/%.cpp: %.lean build
 	$(LEAN) -c $@ $<
 
 build :
@@ -50,7 +68,10 @@ data_layout.olean : ast.olean parser.olean
 simulate.olean : ast.olean bv.olean pp.olean type_context.olean
 
 clean:
-	- rm -rf build
+	- rm -rf build llvm_exports.o
 	- rm -f *.olean
+
+%.o : %.cpp
+
 
 .PHONY : clean all

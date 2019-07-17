@@ -8,7 +8,7 @@ import .simulate
 
 open llvm.
 
-def main (xs : List String) : IO UInt32 := do
+def main (xs : List String) :    IO UInt32 := do
 
   ctx ← newLLVMContext;
   mb ← newMemoryBufferFromFile xs.head;

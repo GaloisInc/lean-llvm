@@ -24,7 +24,6 @@ std::unique_ptr<MemoryBuffer> fromFile(const char* path) {
     return std::move(MBOrErr.get());
 }
 
-
 std::unique_ptr<llvm::Module> getModule(LLVMContext* ctx, const char* path) {
     std::unique_ptr<MemoryBuffer> b = fromFile(path);
 

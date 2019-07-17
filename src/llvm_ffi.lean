@@ -7,65 +7,79 @@ Lean declarations to link against LLVM C++ declarations.
 -/
 
 constant LLVMContext := Unit
-constant MemoryBuffer := Unit
-constant Module := Unit
-constant LLVMFunction := Unit
-constant LLVMType := Unit
-constant BasicBlock := Unit
-constant Instruction := Unit
-constant LLVMValue := Unit
-constant LLVMConstant := Unit
-
-inductive value_decomposition
-| unknown_value  : value_decomposition
-| argument_value : Nat -> value_decomposition
-| instruction_value : Instruction -> value_decomposition
-| constant_value : LLVMConstant -> value_decomposition
-.
-
-inductive branch_decomposition
-| unconditional : BasicBlock → branch_decomposition
-| conditional : LLVMValue → BasicBlock → BasicBlock → branch_decomposition.
 
 /-- This constructs a LLVM Context and frees it when done. -/
 @[extern 1 cpp "lean_llvm::newLLVMContext"]
 constant newLLVMContext : IO LLVMContext := default _
 
-@[extern 2 cpp "lean_llvm::newMemoryBufferFromFile"]
-def newMemoryBufferFromFile : String → IO MemoryBuffer := default _
+------------------------------------------------------------------------
+-- Types
 
-@[extern 3 cpp "lean_llvm::parseBitcodeFile"]
-def parseBitcodeFile : MemoryBuffer → LLVMContext → IO Module := default _
+constant LLVMType := Unit
 
-@[extern 2 cpp "lean_llvm::getModuleIdentifier"]
-def getModuleIdentifier : @& Module → IO String := default _
+------------------------------------------------------------------------
+-- Basic block
 
-@[extern 3 cpp "lean_llvm::setModuleIdentifier"]
-def setModuleIdentifier : @& Module → String → IO Unit := default _
+constant BasicBlock := Unit
 
-@[extern 2 cpp "lean_llvm::getModuleDataLayoutStr"]
-def getModuleDataLayoutStr : @& Module → IO String := default _
+@[extern 2 cpp "lean_llvm::getBBName"]
+def getBBName : @& BasicBlock -> IO (Option String) := default _
 
-@[extern 1 cpp "lean_llvm::mkSomeList"]
-def mkSomeList : @& Nat → List Nat := default _
+------------------------------------------------------------------------
+-- Function
 
-@[extern 2 cpp "lean_llvm::getFunctionArray"]
-def getFunctionArray : @& Module -> IO (Array LLVMFunction) := default _
+constant LLVMFunction := Unit
 
 @[extern 2 cpp "lean_llvm::getFunctionName"]
 def getFunctionName : @& LLVMFunction -> IO String := default _
 
-@[extern 2 cpp "lean_llvm::getReturnType"]
-def getReturnType : @& LLVMFunction -> IO LLVMType := default _
-
 @[extern 2 cpp "lean_llvm::getFunctionArgs"]
 def getFunctionArgs : @& LLVMFunction -> IO (Array (Option String × LLVMType)) := default _
+
+@[extern 2 cpp "lean_llvm::getReturnType"]
+def getReturnType : @& LLVMFunction -> IO LLVMType := default _
 
 @[extern 2 cpp "lean_llvm::getBasicBlockArray"]
 def getBasicBlockArray : @& LLVMFunction -> IO (Array BasicBlock) := default _
 
-@[extern 2 cpp "lean_llvm::getBBName"]
-def getBBName : @& BasicBlock -> IO (Option String) := default _
+------------------------------------------------------------------------
+-- Other
+
+@[extern 1 cpp "lean_llvm::initNativeFns"]
+def initNativeFns : IO Unit := default _
+
+constant MemoryBuffer := Unit
+
+@[extern 2 cpp "lean_llvm::newMemoryBufferFromFile"]
+def newMemoryBufferFromFile : String → IO MemoryBuffer := default _
+
+constant Instruction := Unit
+constant LLVMValue := Unit
+constant LLVMConstant := Unit
+
+
+constant Module := Unit
+
+@[extern 3 cpp "lean_llvm::parseBitcodeFile"]
+def parseBitcodeFile : @&MemoryBuffer → LLVMContext → IO Module := default _
+
+@[extern 3 cpp "lean_llvm::compileCFile"]
+def compileCFile : LLVMContext → @&String → IO Module := default _
+
+@[extern 3 cpp "lean_llvm::compileCPPFile"]
+def compileCPPFile : LLVMContext → @&String → IO Module := default _
+
+@[extern 2 cpp "lean_llvm::getModuleIdentifier"]
+def getModuleIdentifier : @&Module → IO String := default _
+
+@[extern 3 cpp "lean_llvm::setModuleIdentifier"]
+def setModuleIdentifier : @&Module → String → IO Unit := default _
+
+@[extern 2 cpp "lean_llvm::getModuleDataLayoutStr"]
+def getModuleDataLayoutStr : @& Module → IO String := default _
+
+@[extern 2 cpp "lean_llvm::getFunctionArray"]
+def getFunctionArray : @& Module -> IO (Array LLVMFunction) := default _
 
 @[extern 2 cpp "lean_llvm::getTypeTag"]
 def getTypeTag : @& LLVMType -> IO Nat := default _
@@ -110,7 +124,13 @@ def hasNoSignedWrap : @& Instruction -> IO Bool := default _
 def hasNoUnsignedWrap : @& Instruction -> IO Bool := default _
 
 @[extern 2 cpp "lean_llvm::isExact"]
-def isExact : @& Instruction -> IO Bool := default _
+def isExact : @&Instruction -> IO Bool := default _
+
+inductive value_decomposition
+| unknown_value  : value_decomposition
+| argument_value : Nat -> value_decomposition
+| instruction_value : Instruction -> value_decomposition
+| constant_value : LLVMConstant -> value_decomposition
 
 @[extern 2 cpp "lean_llvm::decomposeValue"]
 def decomposeValue : @& LLVMValue -> IO value_decomposition := default _
@@ -124,6 +144,10 @@ def getSelectInstData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue ×
 -- return bitwidth and value
 @[extern 2 cpp "lean_llvm::getConstIntData"]
 def getConstIntData : @& LLVMConstant -> IO (Option (Nat × Nat)) := default _
+
+inductive branch_decomposition
+| unconditional : BasicBlock → branch_decomposition
+| conditional : LLVMValue → BasicBlock → BasicBlock → branch_decomposition
 
 @[extern 2 cpp "lean_llvm::getBranchInstData"]
 def getBranchInstData : @& Instruction -> IO (Option branch_decomposition) := default _
