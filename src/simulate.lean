@@ -35,7 +35,8 @@ instance frameInh : Inhabited frame := Inhabited.mk
 
 structure state :=
   (mem : memMap)
-  (mod : module).
+  (mod : module)
+  (dl  : data_layout).
 
 structure sim_conts (z:Type) :=
   (kerr : IO.Error → z) /- error continuation -/
@@ -109,7 +110,7 @@ def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 
 def eval_mem_type (t:llvm_type) : sim mem_type :=
   do st <- sim.getState;
-     (match lift_mem_type st.mod.types t with
+     (match lift_mem_type st.dl st.mod.types t with
       | none => throw (IO.userError "could not lift type")
       | (some mt) => pure mt)
 
