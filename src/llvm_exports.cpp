@@ -351,6 +351,31 @@ obj_res getBranchInstData(b_obj_arg i_obj, obj_arg r) {
     }
 }
 
+obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
+  auto i = toInstruction(i_obj);
+  auto gep = llvm::dyn_cast<llvm::GetElementPtrInst>(i);
+  if( !gep ) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  obj_res inbounds;
+  if( gep->isInBounds() ) {
+    inbounds = alloc_cnstr( 1, 0, 0 );
+  } else {
+    inbounds = alloc_cnstr( 0, 0, 0 );
+  }
+
+  obj_res base_obj = allocValueObj(gep->getPointerOperand());
+
+  obj_res arr = alloc_array( 0, 0 );
+  for( Use &u : gep->indices() ) {
+    arr = array_push( allocValueObj( u.get() ));
+  }
+
+  obj_res tuple = mk_pair( inbounds, mk_pair( base_obj, arr ) );
+  return set_io_result( r, mk_option_some( tuple ) );
+}
+
 obj_res getAllocaData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto ai = llvm::dyn_cast<llvm::AllocaInst>(i);
@@ -568,6 +593,7 @@ llvm::Function* toFunction(b_obj_arg o) {
     lean_assert(external_class(o) == getFunctionObjectClass());
     return static_cast<OwnedExternal<llvm::Function>*>(external_data(o))->value;
 }
+
 
 obj_res getFunctionName(b_obj_arg f, obj_arg r) {
     auto fun = toFunction(f);

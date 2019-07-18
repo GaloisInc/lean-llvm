@@ -74,7 +74,6 @@ inductive align_type
   | integer : align_type
   | vector : align_type
   | float  : align_type
-  | aggregate : align_type
 
 inductive mangling
   | elf
@@ -99,6 +98,7 @@ inductive layout_spec
                   (abi_align : Nat) (pref_align : Option Nat) : layout_spec
   | native_int_size (legal_widths : List Nat)     : layout_spec
   | stack_align    : Nat -> layout_spec
+  | aggregate_align (abi_align : Nat) (pref_align:Nat) : layout_spec
   | function_address_space : Nat -> layout_spec
   | stack_alloca  : Nat -> layout_spec
   | mangling : mangling -> layout_spec
@@ -284,7 +284,7 @@ with value : Type
 
 with const_expr : Type
   | select : typed value -> typed value -> typed value -> const_expr
-  | gep : Bool -> Option Nat -> llvm_type -> List (typed value) -> const_expr
+  | gep : Bool -> Option Nat -> llvm_type -> Array (typed value) -> const_expr
   | conv : conv_op -> typed value -> llvm_type -> const_expr
   | arith : arith_op -> typed value -> value -> const_expr
   | fcmp : fcmp_op -> typed value -> typed value -> const_expr
@@ -329,7 +329,7 @@ inductive instruction : Type
   | icmp : icmp_op -> typed value -> value -> instruction
   | fcmp : fcmp_op -> typed value -> value -> instruction
   | phi : llvm_type -> Array (value × block_label) -> instruction
-  | gep (bounds : Bool) : typed value -> List (typed value) -> instruction
+  | gep (bounds : Bool) : typed value -> Array (typed value) -> instruction
   | select : typed value -> typed value -> value -> instruction
   | extract_value : typed value -> List Nat -> instruction
   | insert_value : typed value -> typed value -> List Nat -> instruction

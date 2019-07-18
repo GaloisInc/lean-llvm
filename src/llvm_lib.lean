@@ -200,6 +200,7 @@ def extractICmpOp (n:Nat) : IO icmp_op :=
   | _  => throw (IO.userError ("unexpected icmp operation: " ++ (Nat.toDigits 10 n).asString))
 .
 
+
 def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instruction :=
   do op <- getInstructionOpcode rawinstr;
      tp <- getInstructionType rawinstr >>= extractType;
@@ -316,6 +317,16 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
            do val' <- extractTypedValue ctx val;
               ptr' <- extractTypedValue ctx ptr;
               pure (instruction.store val' ptr' align)
+
+     -- GEP
+     | 33 =>
+        do md <- getGEPData rawinstr;
+           match md with
+           | none => throw (IO.userError "Expected GEP instruction")
+           | (some (inbounds,base,idxes)) =>
+             do base' <- extractTypedValue ctx base;
+                idxes' <- Array.mmap (extractTypedValue ctx) idxes;
+                pure (instruction.gep inbounds base' idxes')
 
      -- trunc
      | 37 => extractCastOp rawinstr ctx (instruction.conv conv_op.trunc)

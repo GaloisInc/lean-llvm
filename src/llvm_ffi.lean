@@ -166,3 +166,6 @@ def getStoreData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue × Opti
 
 @[extern 2 cpp "lean_llvm::getLoadData"]
 def getLoadData : @& Instruction -> IO (Option (LLVMValue × Option Nat)) := default _
+
+@[extern 2 cpp "lean_llvm::getGEPData"]
+def getGEPData : @& Instruction -> IO (Option (Bool × (LLVMValue × Array LLVMValue))) := default _
