@@ -174,4 +174,11 @@ partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type →
 | llvm_type.opaque             := none
 .
 
+
+def sym_type_to_mem_type (dl:data_layout) (tds:Array type_decl) : sym_type -> Option mem_type
+| (sym_type.mem_type mt) := some mt
+| (sym_type.ty_alias i)  := lookup_td tds i >>= (lift_mem_type dl tds)
+| _                      := none
+
+
 end llvm.

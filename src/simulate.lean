@@ -212,6 +212,32 @@ def phi (t:mem_type) (prv:block_label) : List (value × block_label) → sim run
 | ((v,l)::xs) := if prv = l then eval t v else phi xs
 .
 
+def computeGEP {w} (dl:data_layout) : bv w → List runtime_value → mem_type → sim (bv w)
+| base [] _ := pure base
+| base (runtime_value.int w' v :: offsets) ty :=
+    match ty with
+    | (mem_type.array n ty') =>
+         if (w = w') then
+           let idx := bv.from_int w (v.to_int * (Int.ofNat (mem_type.sz dl ty').val)) in
+           computeGEP (bv.add base idx) offsets ty'
+         else
+           throw (IO.userError "invalid array index value in GEP")
+
+    | (mem_type.struct si) =>
+         match si.fields.getOpt v.to_nat with
+         | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
+         | none => throw (IO.userError "invalid struct index value in GEP")
+
+    | (mem_type.packed_struct si) =>
+         match si.fields.getOpt v.to_nat with
+         | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
+         | none => throw (IO.userError "invalid struct index value in GEP")
+
+    | _ => throw (IO.userError "Invalid GEP")
+
+| _ ( _ :: _) _ := throw (IO.userError "invalid index value in GEP")
+
+
 def evalInstr : instruction → sim (Option runtime_value)
 | (instruction.ret_void) := sim.returnVoid
 | (instruction.ret v)    := eval_typed v >>= sim.returnValue
@@ -268,6 +294,23 @@ def evalInstr : instruction → sim (Option runtime_value)
         if cv then sim.jump lt else sim.jump lf
 
 | (instruction.unreachable) := unreachable
+
+| (instruction.gep _bounds base offsets) :=
+     do dl <- state.dl <$> sim.getState;
+        tds <- (module.types ∘ state.mod) <$> sim.getState;
+        baseType <- eval_mem_type base.type;
+        match baseType with
+        | (mem_type.ptr stp) =>
+          match sym_type_to_mem_type dl tds stp with
+          | (some mt) =>
+             do base' <- eval baseType base.value;
+                offsets' <- Array.mmap eval_typed offsets;
+                match base' with
+                | runtime_value.int w baseptr =>
+                    (some ∘ runtime_value.int w) <$> computeGEP dl baseptr offsets'.toList (mem_type.array 0 mt)
+                | _ => throw (IO.userError "Expected bitvector in GEP base value")
+          | none => throw (IO.userError "Invalid GEP, bad base type")
+        | _ => throw (IO.userError "Expected pointer type in GEP base")
 
 | _ := throw (IO.userError "NYE: unimplemented instruction")
 .
