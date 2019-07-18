@@ -85,7 +85,6 @@ def pp_align_type : align_type → doc
 | align_type.integer := text "i"
 | align_type.vector  := text "v"
 | align_type.float   := text "f"
-| align_type.aggregate := text "a"
 .
 
 def pp_mangling : mangling → doc
@@ -110,6 +109,7 @@ def pp_layout_spec : layout_spec → doc
      pp_align_type tp <> pp_layout_body sz abi pref
 | (native_int_size szs) := text "n" <> hcat (punctuate (text ":") (List.map nat szs))
 | (stack_align n) := text "S" <> nat n
+| (aggregate_align abi pref) := text "a:" <> nat abi <> text ":" <> nat pref
 | (layout_spec.mangling m)     := text "m:" <> pp_mangling m
 | (function_address_space n)  := text "P" <> nat n
 | (stack_alloca n) := text "A" <> nat n

@@ -74,7 +74,6 @@ inductive align_type
   | integer : align_type
   | vector : align_type
   | float  : align_type
-  | aggregate : align_type
 
 inductive mangling
   | elf
@@ -99,6 +98,7 @@ inductive layout_spec
                   (abi_align : Nat) (pref_align : Option Nat) : layout_spec
   | native_int_size (legal_widths : List Nat)     : layout_spec
   | stack_align    : Nat -> layout_spec
+  | aggregate_align (abi_align : Nat) (pref_align:Nat) : layout_spec
   | function_address_space : Nat -> layout_spec
   | stack_alloca  : Nat -> layout_spec
   | mangling : mangling -> layout_spec
