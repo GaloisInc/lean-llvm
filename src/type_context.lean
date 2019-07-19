@@ -53,11 +53,11 @@ partial def szAndAlign (dl:data_layout) : mem_type → (bytes × alignment)
 | (ptr _)            := (dl.ptr_size, dl.ptr_align)
 | (int n)            := (toBytes n, computeIntegerAlignment dl.integer_info n)
 | (array n tp)       :=
-     let (sz,a) := szAndAlign tp in
+     let (sz,a) := szAndAlign tp;
      ((padToAlignment sz a).mul n, a)
 | (vector n tp)      :=
-     let (sz,a) := szAndAlign tp in
-     let vsz := sz.mul n in
+     let (sz,a) := szAndAlign tp;
+     let vsz := sz.mul n;
      (vsz, computeVectorAlignment dl.vector_info vsz.toBits)
 | (struct si)        := (si.size, si.alignment)
 | (packed_struct si) := (si.size, si.alignment)
@@ -74,17 +74,17 @@ end mem_type.
 
 def compute_struct_info_aux (dl:data_layout) : bytes → alignment → Array (fieldInfo mem_type) → mem_type → List mem_type → structInfo mem_type
 | sz a fs t [] :=
-    let sz' := sz.add (t.sz dl) in
-    let a'  := maxAlignment a (t.alignment dl) in
-    let fs' := fs.push { value := t, offset := sz, padding := bytes.mk 0 } in
+    let sz' := sz.add (t.sz dl);
+    let a'  := maxAlignment a (t.alignment dl);
+    let fs' := fs.push { value := t, offset := sz, padding := bytes.mk 0 };
     { fields := fs', size := sz', alignment := a' }
 
 | sz a fs t (t'::ts) :=
-    let tsz  := t.sz dl in
-    let tend := sz.add tsz in
-    let sz'  := padToAlignment tend (t'.alignment dl) in
-    let a'   := maxAlignment a (t.alignment dl) in
-    let fs'  := fs.push { value := t, offset := sz, padding := bytes.mk (sz'.val - tend.val) } in
+    let tsz  := t.sz dl;
+    let tend := sz.add tsz;
+    let sz'  := padToAlignment tend (t'.alignment dl);
+    let a'   := maxAlignment a (t.alignment dl);
+    let fs'  := fs.push { value := t, offset := sz, padding := bytes.mk (sz'.val - tend.val) };
     compute_struct_info_aux sz' a' fs' t' ts
 
 def compute_struct_info (dl:data_layout) : List mem_type -> structInfo mem_type
@@ -94,8 +94,8 @@ def compute_struct_info (dl:data_layout) : List mem_type -> structInfo mem_type
 def compute_packed_struct_info_aux (dl:data_layout) : bytes → Array (fieldInfo mem_type) → List mem_type -> structInfo mem_type
 | sz fs [] := { fields := fs, size := sz, alignment := noAlignment }
 | sz fs (t::ts) :=
-    let sz' := sz.add (t.sz dl) in
-    let fs' := fs.push { value := t, offset := sz, padding := bytes.mk 0 } in
+    let sz' := sz.add (t.sz dl);
+    let fs' := fs.push { value := t, offset := sz, padding := bytes.mk 0 };
     compute_packed_struct_info_aux sz' fs' ts
 
 def compute_packed_struct_info (dl:data_layout) : List mem_type → structInfo mem_type :=
@@ -124,11 +124,11 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
 | (llvm_type.alias i) := sym_type.ty_alias i
 
 | t@(llvm_type.fun_ty ret args va) :=
-     let mt : Option fun_decl := do
+     let mt : Option fun_decl := (do
           lift_mem_type ret >>= λret' =>
             List.mmap lift_mem_type args >>= λargs' =>
-            pure (fun_decl.fun_decl ret' args' va)
-     in Option.casesOn mt (sym_type.unsupported t) sym_type.fun_type
+            pure (fun_decl.fun_decl ret' args' va));
+     Option.casesOn mt (sym_type.unsupported t) sym_type.fun_type
 
 | (llvm_type.ptr_to t') := sym_type.mem_type (mem_type.ptr (lift_sym_type t'))
 
@@ -145,14 +145,12 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
 | llvm_type.opaque := sym_type.opaque
 
 | t@(llvm_type.struct fs) :=
-     let mt : Option (List mem_type)
-            := List.mmap lift_mem_type fs
-      in Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
+     let mt : Option (List mem_type) := List.mmap lift_mem_type fs;
+     Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
 
 | t@(llvm_type.packed_struct fs) :=
-     let mt : Option (List mem_type)
-            := List.mmap lift_mem_type fs
-      in Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.packed_struct ∘ compute_packed_struct_info dl)
+     let mt : Option (List mem_type) := List.mmap lift_mem_type fs;
+     Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.packed_struct ∘ compute_packed_struct_info dl)
 .
 
 partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type → Option mem_type

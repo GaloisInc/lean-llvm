@@ -195,7 +195,7 @@ protected def from_nat (w:Nat) (val:Nat) : bv w :=
 
 protected def from_int (w:Nat) : Int → bv w
 | (Int.ofNat n)   := bv.from_nat w n
-| (Int.negSucc n) := let n' := (n % 2^(w-1))+1 in bv.from_nat w (2^w - n')
+| (Int.negSucc n) := let n' := (n % 2^(w-1))+1; bv.from_nat w (2^w - n')
 .
 
 protected def to_int {w} (x:bv w) : Int :=

@@ -75,7 +75,7 @@ partial def lg2aux : Nat → Nat → Nat
 | r n := lg2aux (r+1) (n/2)
 
 def toAlignment (x:Nat) : Option alignment :=
-  let l := lg2aux 0 (x/2) in
+  let l := lg2aux 0 (x/2);
   if 2^l = x then some (alignment.mk l) else none.
 
 def fromAlignment (x:alignment) : Nat := 2^x.exponent.

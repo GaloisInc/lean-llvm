@@ -64,8 +64,8 @@ instance monad : Monad sim :=
 instance monadExcept : MonadExcept IO.Error sim :=
   { throw := λa err => sim.mk (λz conts _k _frm _st => conts.kerr err)
   , catch := λa m handle => sim.mk (λz conts k frm st =>
-      let conts' := { conts with kerr := λerr => (handle err).runSim conts k frm st }
-      in m.runSim conts' k frm st)
+      let conts' := { conts with kerr := λerr => (handle err).runSim conts k frm st };
+      m.runSim conts' k frm st)
   }.
 
 def setFrame (frm:frame) : sim Unit :=
@@ -153,8 +153,8 @@ def asPred : runtime_value → sim Bool
 
 def eval_icmp (op:icmp_op) : runtime_value → runtime_value → sim runtime_value :=
   int_op (λw a b =>
-    let t := (pure (runtime_value.int 1 (bv.from_nat 1 1)) : sim runtime_value) in
-    let f := (pure (runtime_value.int 1 (bv.from_nat 1 0)) : sim runtime_value) in
+    let t := (pure (runtime_value.int 1 (bv.from_nat 1 1)) : sim runtime_value);
+    let f := (pure (runtime_value.int 1 (bv.from_nat 1 0)) : sim runtime_value);
     match op with
     | icmp_op.ieq  => if a.to_nat =  b.to_nat then t else f
     | icmp_op.ine  => if a.to_nat != b.to_nat then t else f
@@ -218,7 +218,7 @@ def computeGEP {w} (dl:data_layout) : bv w → List runtime_value → mem_type �
     match ty with
     | (mem_type.array n ty') =>
          if (w = w') then
-           let idx := bv.from_int w (v.to_int * (Int.ofNat (mem_type.sz dl ty').val)) in
+           let idx := bv.from_int w (v.to_int * (Int.ofNat (mem_type.sz dl ty').val));
            computeGEP (bv.add base idx) offsets ty'
          else
            throw (IO.userError "invalid array index value in GEP")

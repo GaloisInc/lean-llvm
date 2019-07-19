@@ -56,7 +56,7 @@ def text (x:String) : parse String :=
 
 def char (p:Char → Bool) : parse Char :=
   parse.mk (λz kerr kfail k stk str =>
-    let c := str.toSubstring.front in
+    let c := str.toSubstring.front;
     if ¬str.isEmpty ∧ p c then
       k c stk (String.drop str 1)
     else
@@ -64,7 +64,7 @@ def char (p:Char → Bool) : parse Char :=
 
 def chars (p:Char → Bool) : parse String :=
   parse.mk (λz kerr kfail k stk str =>
-    let str' := String.takeWhile str p in
+    let str' := String.takeWhile str p;
     k str' stk (String.drop str (String.length str'))).
 
 def digit : parse Nat :=
@@ -94,7 +94,7 @@ partial def manyAux {α} (m:parse α) (z:Type) (someZ : z)
   : (List α → List String → String → z) → List String → String → z
 
 | k stk str :=
-   let kend := λ(_:List String) (_:String) => k [] stk str in
+   let kend := λ(_:List String) (_:String) => k [] stk str;
    m.runParse z
      kend
      kend

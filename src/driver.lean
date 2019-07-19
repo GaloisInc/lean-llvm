@@ -18,15 +18,14 @@ def main (xs : List String) : IO UInt32 := do
         | (Except.error msg) => throw (IO.userError msg)
         | (Except.ok dl) => pure dl;
 
-
-
   IO.println (pp.render (pp_module m));
 
   let res :=
-     runFunc (symbol.mk "fib")
-             [ runtime_value.int 32 (bv.from_nat 32 8)
+     runFunc (symbol.mk "add_offset")
+             [ runtime_value.int 64 (bv.from_nat 64 8)
+             , runtime_value.int 32 (bv.from_nat 32 8)
              ]
-             (state.mk RBMap.empty m dl) in
+             (state.mk RBMap.empty m dl);
   match res with
   | (Sum.inl err) => throw err
   | (Sum.inr (runtime_value.int _ x, _)) =>
