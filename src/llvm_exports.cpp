@@ -368,8 +368,8 @@ obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
   obj_res base_obj = allocValueObj(gep->getPointerOperand());
 
   obj_res arr = alloc_array( 0, 0 );
-  for( Use &u : gep->indices() ) {
-    arr = array_push( allocValueObj( u.get() ));
+  for( llvm::Use &u : gep->indices() ) {
+    arr = array_push( arr, allocValueObj( u.get() ));
   }
 
   obj_res tuple = mk_pair( inbounds, mk_pair( base_obj, arr ) );
@@ -518,7 +518,7 @@ obj_res getPhiData(b_obj_arg i_obj, obj_arg r) {
 
 obj_res getBBName (b_obj_arg f, obj_arg r) {
     auto bb = toBasicBlock(f);
-    return getOptionalNameObj(bb->getValueName());
+    return set_io_result(r, getOptionalNameObj(bb->getValueName()));
 }
 
 obj_res getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
