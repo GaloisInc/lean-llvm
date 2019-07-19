@@ -14,7 +14,7 @@ LLVM_LIB=$(LLVM_HOME)/build/lib
 LLVM_LIBS := $(shell $(LLVM_HOME)/build/bin/llvm-config --libs)
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
-CXX_FLAGS=-O1 -g
+CXX_FLAGS=-O1 -g -fno-rtti
 CLANG=clang++
 
 SOURCES :=\
@@ -59,7 +59,7 @@ build/%.o : build/%.cpp
 build/%.o : %.cpp
 	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LLVM_BUILD_INCLUDE) -I$(LEAN_INCLUDE) $<
 
-build/%.cpp: %.lean
+build/%.cpp: %.lean %.olean
 	$(LEAN) -c $@ $<
 
 %.olean: %.lean
