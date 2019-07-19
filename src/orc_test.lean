@@ -1,4 +1,5 @@
 import .llvm_ffi
+import .clang_ffi
 
 def main (xs : List String) : IO UInt32 := do
 

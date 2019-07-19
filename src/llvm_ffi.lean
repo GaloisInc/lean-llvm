@@ -63,12 +63,6 @@ constant Module := Unit
 @[extern 3 cpp "lean_llvm::parseBitcodeFile"]
 def parseBitcodeFile : @&MemoryBuffer → LLVMContext → IO Module := default _
 
-@[extern 3 cpp "lean_llvm::compileCFile"]
-def compileCFile : LLVMContext → @&String → IO Module := default _
-
-@[extern 3 cpp "lean_llvm::compileCPPFile"]
-def compileCPPFile : LLVMContext → @&String → IO Module := default _
-
 @[extern 2 cpp "lean_llvm::getModuleIdentifier"]
 def getModuleIdentifier : @&Module → IO String := default _
 
