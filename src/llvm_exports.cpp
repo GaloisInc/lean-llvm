@@ -1,5 +1,6 @@
 /*
-This provides
+This module defines C functions needed for invoking LLVM
+from Lean.
 */
 
 #include "llvm_exports.h"
@@ -7,15 +8,9 @@ This provides
 #include <cstddef>
 #include <iostream>
 
-#include <llvm/IR/Instructions.h>
-#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/ADT/Triple.h>
 #include <llvm/Bitcode/BitcodeReader.h>
-
-#include <llvm/Config/llvm-config.h>
-
-//#include "llvm/ExecutionEngine/Orc/Core.h"
-//#include "llvm/ExecutionEngine/Orc/LLJIT.h"
-//#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include <llvm/IR/Instructions.h>
 #include <llvm/Support/TargetSelect.h>
 
 #include <runtime/apply.h>
@@ -43,7 +38,6 @@ inline obj_res mk_pair(obj_arg x, obj_arg y) {
     return r;
 }
 
-
 ////////////////////////////////////////////////////////////////////////
 // StringRef
 
@@ -62,80 +56,9 @@ object * mk_string(const llvm::StringRef& s) {
     return r;
 }
 
-
 ////////////////////////////////////////////////////////////////////////
-// LLVMContext
+// Generic class functions
 
-void llvmContextFinalize(void* p) {
-    delete static_cast<llvm::LLVMContext*>(p);
-}
-
-void llvmContextForeach(void * p, b_obj_arg a) {
-    // Do not think anything is needed
-}
-
-static
-external_object_class* getLlvmContextClass() {
-    // Use static thread to make this thread safe (hopefully).
-    static
-    external_object_class* c(register_external_object_class(&llvmContextFinalize,
-							    &llvmContextForeach));
-    return c;
-}
-
-llvm::LLVMContext* toLLVMContext(b_obj_arg o) {
-    lean_assert(external_class(o) == getLlvmContextClass());
-    return static_cast<llvm::LLVMContext*>(external_data(o));
-}
-
-
-obj_res newLLVMContext(obj_arg r) {
-    auto ctx = new llvm::LLVMContext();
-    object* ctxObj = alloc_external(getLlvmContextClass(), ctx);
-    return set_io_result(r, ctxObj);
-}
-
-
-////////////////////////////////////////////////////////////////////
-// MemoryBuffer
-
-void memoryBufferFinalize(void* p) {
-    delete static_cast<llvm::MemoryBuffer*>(p);
-}
-
-void memoryBufferForeach(void * p, b_obj_arg a) {
-}
-
-static
-external_object_class* getMemoryBufferClass() {
-    // Use static thread to make this thread safe (hopefully).
-    static
-    external_object_class* c(register_external_object_class(&memoryBufferFinalize,
-							    &memoryBufferForeach));
-    return c;
-}
-
-llvm::MemoryBuffer* toMemoryBuffer(b_obj_arg o) {
-    lean_assert(external_class(o) == getMemoryBufferClass());
-    return static_cast<llvm::MemoryBuffer*>(external_data(o));
-}
-
-obj_res newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
-    const char* path = string_cstr(fname);
-
-    auto MBOrErr = llvm::MemoryBuffer::getFile(path);
-    if (std::error_code EC = MBOrErr.getError()) {
-	return set_io_error(r, mk_string(EC.message()));
-    }
-
-    auto b = std::move(MBOrErr.get());
-    object* bufferObj = alloc_external(getMemoryBufferClass(), b.get());
-    b.release();
-    return set_io_result(r, bufferObj);
-}
-
-////////////////////////////////////////////////////////////////////////
-// Trivial class (used by code below) temporarily.
 
 void trivialFinalize(void* p) {
   return;
@@ -152,6 +75,116 @@ external_object_class* getTrivialObjectClass() {
 
   return c;
 }
+
+
+template<typename T>
+class OwnedPtr {
+    T* ptrVal;
+    object* parentObj;
+    OwnedPtr() = delete;
+    OwnedPtr(const OwnedPtr&) = delete;
+public:
+
+    /** Construct an owned ptr.  We assume the object reference count has been incremented. */
+    OwnedPtr(obj_arg par, T* p)
+	: ptrVal(p), parentObj(par) {
+
+    }
+
+    ~OwnedPtr() {
+	dec_ref(parentObj);
+    }
+
+    object* parent() {
+	return parentObj;
+    }
+
+    T* ptr() {
+	return ptrVal;
+    }
+};
+
+// Casts to given type and invokes delete
+template<typename T>
+void ownedForeach(void * p, b_obj_arg a) {
+    auto d = static_cast<OwnedPtr<T>*>(p);
+    apply_1(a, d->parent());
+}
+
+// Casts to given type and invokes delete
+template<typename T>
+void ownedFinalize(void* p) {
+    delete static_cast<OwnedPtr<T>*>(p);
+}
+
+// Register a class whose lifetime is controlled by another object.  It holds
+// a reference to the owner while alive and releases it when finalized.
+template<typename T>
+static
+external_object_class* registerOwnedClass() {
+    return register_external_object_class(&ownedFinalize<T>, &ownedForeach<T>);
+}
+
+////////////////////////////////////////////////////////////////////////
+// LLVMContext
+
+/** Class for freshly created LLVM contexts. */
+static
+external_object_class* getLLVMContextClass() {
+    // Use static thread to make this thread safe (hopefully).
+    static external_object_class* c = registerDeleteClass<llvm::LLVMContext>();
+    return c;
+}
+
+/** Get the LLVM context associated with the object. */
+llvm::LLVMContext* toLLVMContext(b_obj_arg o) {
+    lean_assert(external_class(o) == getLLVMContextClass());
+    return static_cast<llvm::LLVMContext*>(external_data(o));
+}
+
+/** Create a new LLVM context object. */
+obj_res newLLVMContext(obj_arg r) {
+    auto ctx = new llvm::LLVMContext();
+    object* ctxObj = alloc_external(getLLVMContextClass(), ctx);
+    return set_io_result(r, ctxObj);
+}
+
+////////////////////////////////////////////////////////////////////
+// MemoryBuffer
+
+void memoryBufferFinalize(void* p) {
+    delete static_cast<llvm::MemoryBuffer*>(p);
+}
+
+static
+external_object_class* getMemoryBufferClass() {
+    // Use static thread to make this thread safe (hopefully).
+    static
+    external_object_class* c(register_external_object_class(&memoryBufferFinalize,
+							    &trivialForeach));
+    return c;
+}
+
+llvm::MemoryBuffer* toMemoryBuffer(b_obj_arg o) {
+    lean_assert(external_class(o) == getMemoryBufferClass());
+    return static_cast<llvm::MemoryBuffer*>(external_data(o));
+}
+
+obj_res newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
+    const char* path = string_cstr(fname);
+
+    auto MBOrErr = llvm::MemoryBuffer::getFile(path);
+    if (std::error_code EC = MBOrErr.getError()) {
+	return set_io_error(r, mk_string(EC.message()));
+    }
+
+ auto b = std::move(MBOrErr.get());
+    object* bufferObj = alloc_external(getMemoryBufferClass(), b.get());
+    b.release();
+    return set_io_result(r, bufferObj);
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////
 // Types
@@ -611,6 +644,14 @@ obj_res getBasicBlockArray(b_obj_arg f, obj_arg r) {
 // This owns a LLVM module, and also a pointer to the context to ensure
 // the context is not freed as long as the module is alive.
 struct ModuleRec {
+    // Lean object for context (we hold a handle to this so that
+    // it is not deleted before we are done with the module).
+    object* ctxObj;
+
+    std::unique_ptr<llvm::Module> module;
+
+    ModuleRec(const ModuleRec&) = delete;
+
     ModuleRec(object* c, std::unique_ptr<llvm::Module> m)
 	: ctxObj(c), module(std::move(m)) {
     }
@@ -620,19 +661,8 @@ struct ModuleRec {
 	dec_ref(ctxObj);
     }
 
-    // Lean object for context (we hold a handle to this so that
-    // it is not deleted before we are done with the module).
-    object* ctxObj;
-
-    std::unique_ptr<llvm::Module> module;
 };
 
-void moduleRecFinalize(void* p) {
-    ModuleRec* d = static_cast<ModuleRec*>(p);
-    delete d;
-}
-
-// TODO: Check if this is right.
 void moduleRecForeach(void * p, b_obj_arg a) {
     ModuleRec* d = static_cast<ModuleRec*>(p);
     apply_1(a, d->ctxObj);
@@ -642,15 +672,13 @@ static
 external_object_class* getModuleRecClass() {
     // Use static thread to make this thread safe due to static initialization rule.
     static
-    external_object_class* c(register_external_object_class(&moduleRecFinalize,
-							    &moduleRecForeach));
+	external_object_class* c(register_external_object_class(&deleteFinalize<ModuleRec>,
+								&moduleRecForeach));
     return c;
 }
 
 obj_res allocModuleObj(object* ctx, std::unique_ptr<llvm::Module> m) {
-
     return alloc_external(getModuleRecClass(), new ModuleRec(ctx, std::move(m)));
-
 }
 
 llvm::Module* toModule(b_obj_arg o) {
@@ -659,18 +687,26 @@ llvm::Module* toModule(b_obj_arg o) {
     return p->module.get();
 }
 
+/** Create an object from an LLVM error. */
+obj_res errorMsgObj(llvm::Error e) {
+    std::string msg;
+    handleAllErrors(std::move(e), [&](llvm::ErrorInfoBase &eib) {
+        msg = eib.message();
+    });
+    return mk_string(msg);
+}
+
 obj_res parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     auto ctx = toLLVMContext(ctxObj);
     llvm::MemoryBufferRef buf = toMemoryBuffer(b)->getMemBufferRef();
 
-    llvm::ErrorOr<std::unique_ptr<llvm::Module>> ModuleOrErr =
-          expectedToErrorOrAndEmitErrors(*ctx, parseBitcodeFile(buf, *ctx));
-
-    if (std::error_code EC = ModuleOrErr.getError()) {
+    auto moduleOrErr = parseBitcodeFile(buf, *ctx);
+    if (!moduleOrErr) {
 	dec_ref(ctxObj);
-	return set_io_error(r, mk_string(EC.message()));
+	return set_io_error(r, errorMsgObj(moduleOrErr.takeError()));
     }
-    return set_io_result(r, allocModuleObj(ctxObj, std::move(ModuleOrErr.get())));
+
+    return set_io_result(r, allocModuleObj(ctxObj, std::move(*moduleOrErr)));
 }
 
 obj_res initNativeFns(obj_arg r) {
@@ -758,6 +794,32 @@ obj_res getConstIntData(b_obj_arg c_obj, obj_arg r) {
 
     obj_res pair = mk_pair(box(width), val_obj);
     return set_io_result(r, mk_option_some(pair));
+}
+
+
+////////////////////////////////////////////////////////////////////////
+// Triple
+
+/** Return a String object with a process triple. */
+obj_res getProcessTriple(b_obj_arg unit) {
+    return mk_string(llvm::sys::getProcessTriple());
+}
+
+/** Get triple class. */
+static
+external_object_class* getTripleClass() {
+    static external_object_class* c = registerDeleteClass<llvm::Triple>();
+    return c;
+}
+
+llvm::Triple* getTriple(b_obj_arg o) {
+    lean_assert(external_class(o) == getTripleClass());
+    return static_cast<llvm::Triple*>(external_data(o));
+}
+
+/** Create a triple object from the provided string. */
+obj_res newTriple(b_obj_arg str) {
+    return alloc_external(getTripleClass(), new llvm::Triple(string_cstr(str)));
 }
 
 }

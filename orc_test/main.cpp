@@ -117,7 +117,9 @@ void addModule(IRLayer& compileLayer,
     ExecutionSession& es = compileLayer.getExecutionSession();
 
     JITDylib& dylib = es.getMainJITDylib();
-    auto e = compileLayer.add(dylib, ThreadSafeModule(std::move(m), ctx));
+    ThreadSafeModule tsm(std::move(m), ctx);
+
+    auto e = compileLayer.add(dylib, std::move(tsm));
     if (e) {
 	outs() << "Failed to add " << path << ": " << e;
 	exit(-1);
@@ -136,15 +138,7 @@ void addObjectFile(ObjectLayer& objectLayer, const char* path) {
     }
 }
 
-int main(int argc, const char** argv) {
-    LLVMInitializeX86TargetInfo();
-    LLVMInitializeX86TargetMC();
-    LLVMInitializeX86Target();
-    LLVMInitializeX86AsmPrinter();
-
-    Triple triple(sys::getProcessTriple());
-
-    JITTargetMachineBuilder jtmb(triple);
+DataLayout getProcessDataLayout(JITTargetMachineBuilder& jtmb) {
 
     auto TM = jtmb.createTargetMachine();
     if (!TM) {
@@ -154,15 +148,44 @@ int main(int argc, const char** argv) {
 	exit(-1);
     }
 
-    DataLayout dl((*TM)->createDataLayout());
+    return DataLayout((*TM)->createDataLayout());
+}
+
+struct CompilerSession {
 
     ExecutionSession es;
+    RTDyldObjectLinkingLayer objectLayer;
+    IRCompileLayer compileLayer;
+    MangleAndInterner mangle;
 
-    RTDyldObjectLinkingLayer objectLayer(es, []() { return llvm::make_unique<SectionMemoryManager>(); });
+    CompilerSession(const CompilerSession&) = delete;
 
-    MangleAndInterner mangle(es, dl);
+    CompilerSession(JITTargetMachineBuilder& jtmb)
+	: es(),
+	  objectLayer(es, []() { return llvm::make_unique<SectionMemoryManager>(); }),
+	  compileLayer(es, objectLayer, ConcurrentIRCompiler(jtmb)),
+	  mangle(es, getProcessDataLayout(jtmb)) {
+    }
+};
 
-    ThreadSafeContext ctx = make_unique<LLVMContext>();
+
+int main(int argc, const char** argv) {
+    LLVMInitializeX86TargetInfo();
+    LLVMInitializeX86TargetMC();
+    LLVMInitializeX86Target();
+    LLVMInitializeX86AsmPrinter();
+
+    Triple triple(sys::getProcessTriple());
+    JITTargetMachineBuilder jtmb(triple);
+
+    CompilerSession sess(jtmb);
+
+    ExecutionSession& es = sess.es;
+    RTDyldObjectLinkingLayer& objectLayer = sess.objectLayer;
+    IRCompileLayer& compileLayer = sess.compileLayer;
+    MangleAndInterner& mangle = sess.mangle;
+
+    ThreadSafeContext ctx(std::make_unique<LLVMContext>());
 
     //    es.getMainJITDylib().setGenerator(cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(dl)));
 
@@ -171,7 +194,6 @@ int main(int argc, const char** argv) {
 
     //    addObjectFile(objectLayer, "add.o");
 
-    IRCompileLayer compileLayer(es, objectLayer, ConcurrentIRCompiler(jtmb));
     //addModule(compileLayer, ctx, "fib.bc", getModule);
     addModule(compileLayer, ctx, "add.cpp", compileCPP);
     addModule(compileLayer, ctx, "fib.c", compileCPP);
@@ -186,11 +208,9 @@ int main(int argc, const char** argv) {
     }
 
     auto fib = (fib_fn) sym->getAddress();
-    auto r = fib(10);
 
     // Get time to add
     auto time = high_resolution_clock::now() - begin;
-
 
     for (uint64_t i = 0; i != 10; ++i) {
 	printf("fib(%llu) = %llu\n", i, fib(i));

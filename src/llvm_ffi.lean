@@ -6,11 +6,17 @@ Authors: Robert Dockins, Joe Hendrix
 Lean declarations to link against LLVM C++ declarations.
 -/
 
-constant LLVMContext := Unit
+
+/- A LLVM context.
+   TODO: mark opaque -/
+def LLVMContext := Unit
+
+instance LLVMContext.inhabited : Inhabited LLVMContext := inferInstanceAs (Inhabited Unit)
 
 /-- This constructs a LLVM Context and frees it when done. -/
 @[extern 1 cpp "lean_llvm::newLLVMContext"]
 constant newLLVMContext : IO LLVMContext := default _
+
 
 ------------------------------------------------------------------------
 -- Types
@@ -45,6 +51,7 @@ def getBasicBlockArray : @& LLVMFunction -> IO (Array BasicBlock) := default _
 ------------------------------------------------------------------------
 -- Other
 
+/-- Initialize machine code functions for the current architecture. -/
 @[extern 1 cpp "lean_llvm::initNativeFns"]
 def initNativeFns : IO Unit := default _
 
@@ -57,17 +64,10 @@ constant Instruction := Unit
 constant LLVMValue := Unit
 constant LLVMConstant := Unit
 
-
 constant Module := Unit
 
 @[extern 3 cpp "lean_llvm::parseBitcodeFile"]
 def parseBitcodeFile : @&MemoryBuffer → LLVMContext → IO Module := default _
-
-@[extern 3 cpp "lean_llvm::compileCFile"]
-def compileCFile : LLVMContext → @&String → IO Module := default _
-
-@[extern 3 cpp "lean_llvm::compileCPPFile"]
-def compileCPPFile : LLVMContext → @&String → IO Module := default _
 
 @[extern 2 cpp "lean_llvm::getModuleIdentifier"]
 def getModuleIdentifier : @&Module → IO String := default _
@@ -166,3 +166,35 @@ def getStoreData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue × Opti
 
 @[extern 2 cpp "lean_llvm::getLoadData"]
 def getLoadData : @& Instruction -> IO (Option (LLVMValue × Option Nat)) := default _
+
+------------------------------------------------------------------------
+-- Triple
+
+@[extern cpp "lean_llvm::getProcessTriple"]
+def processTriple : Unit → String := default _
+
+def Triple := Unit
+
+instance Triple.inhabited : Inhabited Triple := inferInstanceAs (Inhabited Unit)
+
+/-- This constructs a compiler session and frees it when done. -/
+@[extern cpp "lean_llvm::newTriple"]
+constant newTriple : String → Triple := default _
+
+------------------------------------------------------------------------
+-- CompilerSession
+
+@[extern 3 cpp "lean_llvm::invokeClang"]
+def invokeClang : LLVMContext → @&(Array String) → IO Module := default _
+
+constant CompilerSession := Unit
+
+/-- This constructs a compiler session and frees it when done. -/
+@[extern 2 cpp "lean_llvm::newCompilerSession"]
+constant newCompilerSession : Triple → IO CompilerSession := default _
+
+@[extern 3 cpp "lean_llvm::addFromClangCompile"]
+constant addFromClang : @&CompilerSession → @&(Array String) → IO Unit := default _
+
+@[extern 4 cpp "lean_llvm::lookupFn"]
+constant lookupFn : @&CompilerSession → @&String → ∀(t:@&Type), IO t := default _

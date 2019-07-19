@@ -35,30 +35,48 @@ OBJ=$(patsubst %.lean,build/%.o,$(SOURCES))
 
 all : driver orc_test
 
-build/%.o : build/%.cpp
-	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+tests/test_add.bc : tests/test_add.cpp
+	$(LEANC) -o $@ -c -emit-llvm $<
+
+tests/test_add.o : tests/test_add.cpp
+	$(LEANC) -o $@ -c $<
+
+tests/test_add.cpp : tests/test_add.lean
+	$(LEAN) -c $@ $<
 
 build/llvm_exports.o : llvm_exports.h
-build/clang_exports.o : llvm_exports.h
 
 
 build/%.o : %.cpp
-	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+	$(LEANC) $(CXX_FLAGS) -g -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+
+build/llvm_exports.o : llvm_exports.h
+build/jit_exports.o : llvm_exports.h
 
 driver : $(OBJ) $(OLEAN) build/driver.o build/llvm_exports.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $(OBJ) build/driver.o build/llvm_exports.o
 
-orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_exports.o  build/clang_exports.o
-	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap build/orc_test.o build/llvm_ffi.o build/llvm_exports.o build/clang_exports.o
+orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_exports.o build/jit_exports.o
+	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $^
 
-build/%.cpp: %.lean build
-	$(LEAN) -c $@ $<
 
 build :
 	mkdir -p $@
 
+build/%.cpp: %.lean build
+	$(LEAN) -c $@ $<
+
+.PRECIOUS : build/%.cpp
+
+build/%.o : build/%.cpp
+	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+
 %.olean: %.lean
 	$(LEAN) --make $<
+
+ast.cpp : ast.lean
+
+build/orc_test.cpp : llvm_ffi.olean
 
 driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
 llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean llvm_ffi.olean
