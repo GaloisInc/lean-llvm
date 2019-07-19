@@ -38,17 +38,20 @@ $(info $(shell mkdir -p build))
 
 all : driver orc_test
 
+tests/test_add.bc : tests/test_add.cpp
+	$(LEANC) -o $@ -c -emit-llvm $<
+
+tests/test_add.o : tests/test_add.cpp
+	$(LEANC) -o $@ -c $<
+
+tests/test_add.cpp : tests/test_add.lean
+	$(LEAN) -c $@ $<
+
 driver : $(OBJ) $(OLEAN) build/driver.o build/llvm_exports.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) -lz -ltermcap $(OBJ) build/driver.o build/llvm_exports.o
 
-orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_exports.o build/clang_exports.o build/clang_ffi.o
-	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap build/orc_test.o build/llvm_ffi.o build/clang_ffi.o build/llvm_exports.o build/clang_exports.o
-
-%.olean : %.lean
-	$(LEAN) --make $<
-
-build/%.cpp : %.lean %.olean
-	$(LEAN) -c $@ $<
+orc_test : build/orc_test.o build/llvm_ffi.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o
+	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $^
 
 build/%.o : build/%.cpp
 	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
@@ -56,8 +59,15 @@ build/%.o : build/%.cpp
 build/%.o : %.cpp
 	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LLVM_BUILD_INCLUDE) -I$(LEAN_INCLUDE) $<
 
+build/%.cpp: %.lean
+	$(LEAN) -c $@ $<
+
+%.olean: %.lean
+	$(LEAN) --make $<
+
+
 build/llvm_exports.o : llvm_exports.h
-build/clang_exports.o : llvm_exports.h
+build/jit_exports.o : llvm_exports.h
 
 data_layout.olean : ast.olean parser.olean alignment.olean
 driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
@@ -68,11 +78,9 @@ pp.olean : ast.olean
 simulate.olean : ast.olean bv.olean pp.olean type_context.olean
 type_context.olean : alignment.olean ast.olean data_layout.olean
 
-
 clean:
 	- rm -rf build llvm_exports.o
 	- rm -f *.olean
-
 
 .PHONY : clean all
 .PRECIOUS : build/%.cpp build/%.o

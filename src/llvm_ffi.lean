@@ -6,11 +6,17 @@ Authors: Robert Dockins, Joe Hendrix
 Lean declarations to link against LLVM C++ declarations.
 -/
 
-constant LLVMContext := Unit
+
+/- A LLVM context.
+   TODO: mark opaque -/
+def LLVMContext := Unit
+
+instance LLVMContext.inhabited : Inhabited LLVMContext := inferInstanceAs (Inhabited Unit)
 
 /-- This constructs a LLVM Context and frees it when done. -/
 @[extern 1 cpp "lean_llvm::newLLVMContext"]
 constant newLLVMContext : IO LLVMContext := default _
+
 
 ------------------------------------------------------------------------
 -- Types
@@ -45,6 +51,7 @@ def getBasicBlockArray : @& LLVMFunction -> IO (Array BasicBlock) := default _
 ------------------------------------------------------------------------
 -- Other
 
+/-- Initialize machine code functions for the current architecture. -/
 @[extern 1 cpp "lean_llvm::initNativeFns"]
 def initNativeFns : IO Unit := default _
 
@@ -56,7 +63,6 @@ def newMemoryBufferFromFile : String → IO MemoryBuffer := default _
 constant Instruction := Unit
 constant LLVMValue := Unit
 constant LLVMConstant := Unit
-
 
 constant Module := Unit
 
@@ -163,3 +169,17 @@ def getLoadData : @& Instruction -> IO (Option (LLVMValue × Option Nat)) := def
 
 @[extern 2 cpp "lean_llvm::getGEPData"]
 def getGEPData : @& Instruction -> IO (Option (Bool × (LLVMValue × Array LLVMValue))) := default _
+
+------------------------------------------------------------------------
+-- Triple
+
+@[extern cpp "lean_llvm::getProcessTriple"]
+def processTriple : Unit → String := default _
+
+def Triple := Unit
+
+instance Triple.inhabited : Inhabited Triple := inferInstanceAs (Inhabited Unit)
+
+/-- This constructs a compiler session and frees it when done. -/
+@[extern cpp "lean_llvm::newTriple"]
+constant newTriple : String → Triple := default _
