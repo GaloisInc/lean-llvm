@@ -6,13 +6,22 @@ LLVM_LIBDIR :=$(LLVM_HOME)/lib
 LLVM_LIBS := $(shell llvm-config --libs)
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
-main : main.o
+all : main ll
+
+fib.bc : fib.c
+	clang -c -emit-llvm $<
+
+% : %.cpp
+
+% : %.o
 	clang++ -o $@ -O3 -L$(LLVM_LIBDIR) $(CLANG_LIBS) $(LLVM_LIBS) -lz -ltermcap $<
 
-main.o : main.cpp
+%.o : %.cpp
 	clang++ -o $@ -I$(LLVM_INCLUDE) -fno-rtti -g -c $<
 
 clean :
-	rm -rf main main.o
+	rm -rf ll main ll.o main.o
 
-.PHONY : clean
+.PRECIOUS : %.o
+
+.PHONY : all clean
