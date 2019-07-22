@@ -128,6 +128,7 @@ std::unique_ptr<llvm::Module> compileCPP(llvm::LLVMContext* ctx, const char* pat
 
 using sym_map = std::map<std::string, JITEvaluatedSymbol>;
 
+// A symbol resolver that just uses a std::map
 class eager_resolver : public JITSymbolResolver {
     eager_resolver(eager_resolver&) = delete;
 public:
@@ -158,6 +159,8 @@ private:
 
 typedef std::unique_ptr<llvm::Module> (*moduleFn)(llvm::LLVMContext* ctx, const char* path);
 
+// This provides the main interface to the JIT.
+// It eagerly
 class jit_linker {
 public:
     jit_linker()
@@ -166,19 +169,19 @@ public:
 	, memMgrs() {
     }
 
-
+    // Load an object file from a file, and link it in.
     void addObjectFile(const char* path) {
 	addObjBuffer(std::move(fromFile(path)));
-
     }
 
+    // Load a LLVM module using the given function, compile, and link it in.
     void addModule(const char* path, moduleFn f) {
 	auto ctx = std::make_unique<LLVMContext>();
 	auto m = f(ctx.get(), path);
 
-
 	auto TM = cantFail(jtmb.createTargetMachine());
 
+	// Compile LLVM module to
 	SmallVector<char, 0> ObjBufferSV;
 	{
 	    raw_svector_ostream ObjStream(ObjBufferSV);
@@ -205,13 +208,16 @@ public:
 	}
 	return i->second;
     }
-
-
 private:
+    // target machine builder for compilation
     llvm::orc::JITTargetMachineBuilder jtmb;
+    // datalayout for targets
     DataLayout dl;
+
+    // Holds memory managers created so far.
     std::vector<std::unique_ptr<RuntimeDyld::MemoryManager>> memMgrs;
 
+    // Symbol map
     sym_map symMap;
 
     void addObjBuffer(std::unique_ptr<MemoryBuffer> objBuffer) {
@@ -235,20 +241,21 @@ private:
 	    memMgr = memMgrs.back().get();
 	}
 
-
+	// Create classes for loading
 	eager_resolver resolver(symMap);
-
 	RuntimeDyld rtDyld(*memMgr, resolver);
+
+	// Load object
 	std::unique_ptr<LoadedObjectInfo> Info = rtDyld.loadObject(**obj);
 
-
+	// Check for error.
 	if (rtDyld.hasError()) {
 	    Error e = make_error<StringError>(rtDyld.getErrorString(), inconvertibleErrorCode());
 	    exitWithError(std::move(e));
 	}
 
+	// Finalize and find new symbols
 	rtDyld.finalizeWithMemoryManagerLocking();
-
 	for (const std::pair<StringRef, JITEvaluatedSymbol>& kv : rtDyld.getSymbolTable()) {
 	    std::string nm(kv.first);
 	    auto r = symMap.insert(std::make_pair(nm, kv.second));
@@ -258,7 +265,6 @@ private:
 	    }
 	}
     }
-
 };
 
 typedef uint64_t (*add_fn)(uint64_t, uint64_t);
@@ -275,22 +281,19 @@ int main(int argc, const char** argv) {
     const auto begin = high_resolution_clock::now();
 
     //jl.addObjectFile("add.o");
-
     jl.addModule("add.cpp", compileCPP);
     jl.addModule("fib.c", compileC);
 
-    JITEvaluatedSymbol sym = jl.lookup("fib");
+    auto fib = (fib_fn) jl.lookup("fib").getAddress();
 
-    auto fib = (fib_fn) sym.getAddress();
-
-    // Get time to add
+    // Get time this took
     auto time = high_resolution_clock::now() - begin;
 
+    // Invoke fib to make sure it works.
     for (uint64_t i = 0; i != 10; ++i) {
 	printf("fib(%llu) = %llu\n", i, fib(i));
     }
 
     std::cout << "Elapsed time: " << duration<double, std::milli>(time).count() << ".\n";
-
     return 0;
 }
