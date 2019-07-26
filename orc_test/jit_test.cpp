@@ -18,17 +18,7 @@ using namespace llvm;
  * This creates a target machine for the current process by looking up
  * the target in the TargetRegistry.
  */
-llvm::TargetMachine* mkTargetMachine() {
-    std::string procTriple = sys::getProcessTriple();
-
-    std::string errMsg;
-    const Target* tgtPtr = llvm::TargetRegistry::lookupTarget(procTriple, errMsg);
-    if (!tgtPtr) {
-	std::cerr << "Could not find target." << std::endl;
-	exit(-1);
-    }
-
-    StringRef tt = procTriple;
+llvm::TargetMachine* mkTargetMachine(const llvm::Target* tgtPtr, const std::string& procTriple) {
 
     TargetOptions options;
     // JHx note: Not sure if we need these, but ORC sets them.
@@ -39,7 +29,7 @@ llvm::TargetMachine* mkTargetMachine() {
     Optional<CodeModel::Model> CM;
     CodeGenOpt::Level optLevel = CodeGenOpt::None;
 
-    TargetMachine * tm = tgtPtr->createTargetMachine (tt, "", "", options, RM, CM, optLevel, true);
+    TargetMachine * tm = tgtPtr->createTargetMachine(procTriple, "", "", options, RM, CM, optLevel, true);
     if (!tm) {
 	std::cerr << "Could not make target machine." << std::endl;
 	exit(-1);
@@ -94,8 +84,6 @@ compile(llvm::LLVMContext* ctx,
     return act.takeModule();
 }
 
-
-
 static
 std::unique_ptr<llvm::Module> compileC(llvm::LLVMContext* ctx, const char* path) {
     const char * args[] = { path };
@@ -135,8 +123,8 @@ using moduleFn = std::unique_ptr<llvm::Module>(llvm::LLVMContext* ctx, const cha
 class jit_linker : private llvm::JITSymbolResolver {
 
 public:
-    jit_linker(const std::shared_ptr<llvm::TargetMachine>& tm)
-	: tm(tm),
+    jit_linker(const llvm::Target* tgtPtr, const std::string& procTriple)
+	: tm(mkTargetMachine(tgtPtr, procTriple)),
 	  globalPrefix(tm->createDataLayout().getGlobalPrefix()),
 	  memMgrs() {
     }
@@ -183,16 +171,17 @@ public:
 	return i->second;
     }
 private:
-    std::shared_ptr<llvm::TargetMachine> tm;
+    /// A target machine value for compiling LLVM to machine code.
+    std::unique_ptr<llvm::TargetMachine> tm;
 
+    /// Prefix to append to symbol names (or 0 for no prefix)
     char globalPrefix;
 
-    // Holds memory managers created so far.
-    std::vector<std::unique_ptr<RuntimeDyld::MemoryManager>> memMgrs;
+    /// Holds memory managers created so far.
+    std::vector<std::unique_ptr<llvm::SectionMemoryManager>> memMgrs;
 
-    // Symbol map
+    /// Map from symbol names to sets.
     sym_map symMap;
-
 
     Expected<LookupSet> getResponsibilitySet(const LookupSet& symbols) override {
 	// This is called with the common and weak symbols in the binary, and we
@@ -240,11 +229,11 @@ private:
 
 	// Record a memory manager for this object.
 	memMgrs.push_back(std::make_unique<SectionMemoryManager>());
-	RuntimeDyld::MemoryManager* memMgr  = memMgrs.back().get();
+	RuntimeDyld::MemoryManager& memMgr  = *memMgrs.back();
 
 	// Create classes for loading
 	//eager_resolver resolver([this](auto s, auto on) {this->lookup(std::move(s), std::move(on));});
-	RuntimeDyld rtDyld(*memMgr, *this);
+	RuntimeDyld rtDyld(memMgr, *this);
 
 	// Load object
 	std::unique_ptr<LoadedObjectInfo> Info = rtDyld.loadObject(**obj);
@@ -277,10 +266,16 @@ int main(int argc, const char** argv) {
     LLVMInitializeX86Target();
     LLVMInitializeX86AsmPrinter();
 
-    std::shared_ptr<llvm::TargetMachine> tm(mkTargetMachine());
+    std::string procTriple = sys::getProcessTriple();
 
-    jit_linker jl(tm);
-    tm = 0;
+    std::string errMsg;
+    const Target* tgtPtr = llvm::TargetRegistry::lookupTarget(procTriple, errMsg);
+    if (!tgtPtr) {
+	std::cerr << "Could not find target." << std::endl;
+	exit(-1);
+    }
+
+    jit_linker jl(tgtPtr, procTriple);
 
     const auto begin = high_resolution_clock::now();
 
