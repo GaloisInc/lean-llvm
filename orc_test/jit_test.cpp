@@ -1,11 +1,12 @@
 #include <iostream>
 
 #include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/SmallVectorMemoryBuffer.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetMachine.h"
 
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/CodeGen/CodeGenAction.h"
@@ -13,31 +14,38 @@
 using namespace std::chrono;
 using namespace llvm;
 
-static
-DataLayout getProcessDataLayout(llvm::orc::JITTargetMachineBuilder& jtmb) {
+/**
+ * This creates a target machine for the current process by looking up
+ * the target in the TargetRegistry.
+ */
+llvm::TargetMachine* mkTargetMachine() {
+    std::string procTriple = sys::getProcessTriple();
 
-    auto TM = jtmb.createTargetMachine();
-    if (!TM) {
-	printf("!TM\n");
-	Error e = TM.takeError();
-	outs() << "Get datalayout error: " << e;
+    std::string errMsg;
+    const Target* tgtPtr = llvm::TargetRegistry::lookupTarget(procTriple, errMsg);
+    if (!tgtPtr) {
+	std::cerr << "Could not find target." << std::endl;
 	exit(-1);
     }
 
-    return DataLayout((*TM)->createDataLayout());
-}
+    StringRef tt = procTriple;
 
-// Get the mangled name according to data layout.
-static
-std::string getMangledName(const DataLayout& DL, StringRef name) {
-   std::string r;
-   {
-       raw_string_ostream MangledNameStream(r);
-       Mangler::getNameWithPrefix(MangledNameStream, name, DL);
-   }
-   return r;
-}
+    TargetOptions options;
+    // JHx note: Not sure if we need these, but ORC sets them.
+    options.EmulatedTLS = true;
+    options.ExplicitEmulatedTLS = true;
 
+    Optional<Reloc::Model> RM;
+    Optional<CodeModel::Model> CM;
+    CodeGenOpt::Level optLevel = CodeGenOpt::None;
+
+    TargetMachine * tm = tgtPtr->createTargetMachine (tt, "", "", options, RM, CM, optLevel, true);
+    if (!tm) {
+	std::cerr << "Could not make target machine." << std::endl;
+	exit(-1);
+    }
+    return tm;
+}
 
 // Exit with an error message.
 static
@@ -50,30 +58,6 @@ void exitWithError(llvm::Error e) {
     });
     std::cerr << "Error: " << msg << std::endl;
     exit(-1);
-}
-
-static
-std::unique_ptr<MemoryBuffer> fromFile(const char* path) {
-    llvm::ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr = MemoryBuffer::getFile(path);
-
-    if (!MBOrErr)  {
-	printf("Could not open %s\n", path);
-	exit(-1);
-    }
-
-    return std::move(MBOrErr.get());
-}
-
-static
-std::unique_ptr<llvm::Module> getModule(LLVMContext* ctx, const char* path) {
-    std::unique_ptr<MemoryBuffer> b = fromFile(path);
-
-    Expected< std::unique_ptr< Module > > mr = parseBitcodeFile(b->getMemBufferRef(), *ctx);
-    if (!mr) {
-	printf("Loading module failed");
-	exit(-1);
-    }
-    return std::move(*mr);
 }
 
 static
@@ -107,9 +91,10 @@ compile(llvm::LLVMContext* ctx,
 	std::cerr << "Action failed!" << std::endl;
 	exit(-1);
     }
-    std::unique_ptr< llvm::Module > modPtr = act.takeModule();
-    return std::move(modPtr);
+    return act.takeModule();
 }
+
+
 
 static
 std::unique_ptr<llvm::Module> compileC(llvm::LLVMContext* ctx, const char* path) {
@@ -125,60 +110,51 @@ std::unique_ptr<llvm::Module> compileCPP(llvm::LLVMContext* ctx, const char* pat
     return compile(ctx, args, argEnd);
 }
 
-using sym_map = std::map<std::string, JITEvaluatedSymbol>;
+using sym_map = std::unordered_map<std::string, JITEvaluatedSymbol>;
 
-// A symbol resolver that just uses a std::map
-class eager_resolver : public JITSymbolResolver {
-    eager_resolver(eager_resolver&) = delete;
-public:
-    eager_resolver(sym_map& symMap) : symMap(symMap) {}
+/** Strip the global prefix from a symbol. */
+std::string stripGlobalPrefix(char globalPrefix, const StringRef& internName) {
+    const char* nmPtr = internName.begin();
+    size_t nmSize = internName.size();
 
-    void lookup(const LookupSet &symbols, OnResolvedFunction onResolved) override {
-	std::map< StringRef, JITEvaluatedSymbol > result;
-
-	for (auto internName : symbols) {
-	    std::string nm(internName);
-
-	    auto i = symMap.find(nm);
-	    if (i == symMap.end()) {
-		std::cerr << "Failed to find " << nm << std::endl;
-		exit(-1);
-	    }
-	    result.insert(std::make_pair(internName, i->second));
+    if (globalPrefix) {
+	if (*nmPtr != globalPrefix) {
+	    std::cerr << "Unexpected name " << std::string(nmPtr, nmSize) << std::endl;
+	    exit(-1);
 	}
-	onResolved(result);
+	nmPtr++; --nmSize;
     }
 
-    Expected<LookupSet> getResponsibilitySet(const LookupSet& symbols) override {
-	return symbols;
-    }
-private:
-    sym_map& symMap;
-};
+    return std::string(nmPtr, nmSize);
+}
 
-typedef std::unique_ptr<llvm::Module> (*moduleFn)(llvm::LLVMContext* ctx, const char* path);
+using moduleFn = std::unique_ptr<llvm::Module>(llvm::LLVMContext* ctx, const char* path);
 
 // This provides the main interface to the JIT.
 // It eagerly
-class jit_linker {
+class jit_linker : private llvm::JITSymbolResolver {
+
 public:
-    jit_linker()
-	: jtmb(Triple(sys::getProcessTriple()))
-	, dl(getProcessDataLayout(jtmb))
-	, memMgrs() {
+    jit_linker(const std::shared_ptr<llvm::TargetMachine>& tm)
+	: tm(tm),
+	  globalPrefix(tm->createDataLayout().getGlobalPrefix()),
+	  memMgrs() {
     }
 
     // Load an object file from a file, and link it in.
     void addObjectFile(const char* path) {
-	addObjBuffer(std::move(fromFile(path)));
+	llvm::ErrorOr<std::unique_ptr<MemoryBuffer>> MBOrErr = MemoryBuffer::getFile(path);
+	if (!MBOrErr)  {
+	    printf("Could not open %s\n", path);
+	    exit(-1);
+	}
+	addObjBuffer(std::move(MBOrErr.get()));
     }
 
     // Load a LLVM module using the given function, compile, and link it in.
     void addModule(const char* path, moduleFn f) {
 	auto ctx = std::make_unique<LLVMContext>();
 	auto m = f(ctx.get(), path);
-
-	auto TM = cantFail(jtmb.createTargetMachine());
 
 	// Compile LLVM module to
 	SmallVector<char, 0> ObjBufferSV;
@@ -187,19 +163,18 @@ public:
 
 	    legacy::PassManager PM;
 	    MCContext *Ctx;
-	    if (TM->addPassesToEmitMC(PM, Ctx, ObjStream))
+	    if (tm->addPassesToEmitMC(PM, Ctx, ObjStream)) {
 		llvm_unreachable("Target does not support MC emission.");
+	    }
 	    PM.run(*m);
 	}
 
-	auto objBuffer = llvm::make_unique<SmallVectorMemoryBuffer>(std::move(ObjBufferSV));
+	auto objBuffer = std::make_unique<SmallVectorMemoryBuffer>(std::move(ObjBufferSV));
 
 	addObjBuffer(std::move(objBuffer));
     }
 
-    JITEvaluatedSymbol lookup(const std::string& initName) {
-	auto nm = getMangledName(dl, initName);
-
+    JITEvaluatedSymbol lookup(const std::string& nm) {
 	auto i = symMap.find(nm);
 	if (i == symMap.end()) {
 	    std::cerr << "Failed to find " << nm << std::endl;
@@ -208,16 +183,49 @@ public:
 	return i->second;
     }
 private:
-    // target machine builder for compilation
-    llvm::orc::JITTargetMachineBuilder jtmb;
-    // datalayout for targets
-    DataLayout dl;
+    std::shared_ptr<llvm::TargetMachine> tm;
+
+    char globalPrefix;
 
     // Holds memory managers created so far.
     std::vector<std::unique_ptr<RuntimeDyld::MemoryManager>> memMgrs;
 
     // Symbol map
     sym_map symMap;
+
+
+    Expected<LookupSet> getResponsibilitySet(const LookupSet& symbols) override {
+	// This is called with the common and weak symbols in the binary, and we
+	// should return the ones we want the loader to load.
+	//
+	// My current assumption is that Lean will not generate any
+	// common or weak symbols, and so we should just error if the
+	// binary contains them.
+	if (symbols.size() != 0) {
+	    std::cerr << "Unexpected common/weak symbols in binary." << std::endl;
+	    exit(-1);
+	}
+	return LookupSet();
+    }
+
+
+    void lookup(const llvm::JITSymbolResolver::LookupSet &symbols,
+		llvm::JITSymbolResolver::OnResolvedFunction onResolved) override {
+	std::map< StringRef, JITEvaluatedSymbol > result;
+
+	for (const StringRef& internName : symbols) {
+	    std::string nm = stripGlobalPrefix(globalPrefix, internName);
+
+	    auto i = symMap.find(nm);
+	    if (i == symMap.end()) {
+		std::cerr << "Failed to find " << nm << std::endl;
+		exit(-1);
+	    }
+	    result.insert(std::make_pair(internName, i->second));
+	}
+	onResolved(std::move(result));
+    }
+
 
     void addObjBuffer(std::unique_ptr<MemoryBuffer> objBuffer) {
 	auto obj = object::ObjectFile::createObjectFile(*objBuffer);
@@ -229,20 +237,14 @@ private:
 
 	std::unique_ptr< MemoryBuffer > underlyingBuffer;
 
-	auto Tmp = std::make_unique<SectionMemoryManager>(); ;
-
-	RuntimeDyld::MemoryManager* memMgr = nullptr;
 
 	// Record a memory manager for this object.
-	{
-	    auto tmp = std::make_unique<SectionMemoryManager>();
-	    memMgrs.push_back(std::move(tmp));
-	    memMgr = memMgrs.back().get();
-	}
+	memMgrs.push_back(std::make_unique<SectionMemoryManager>());
+	RuntimeDyld::MemoryManager* memMgr  = memMgrs.back().get();
 
 	// Create classes for loading
-	eager_resolver resolver(symMap);
-	RuntimeDyld rtDyld(*memMgr, resolver);
+	//eager_resolver resolver([this](auto s, auto on) {this->lookup(std::move(s), std::move(on));});
+	RuntimeDyld rtDyld(*memMgr, *this);
 
 	// Load object
 	std::unique_ptr<LoadedObjectInfo> Info = rtDyld.loadObject(**obj);
@@ -256,7 +258,7 @@ private:
 	// Finalize and find new symbols
 	rtDyld.finalizeWithMemoryManagerLocking();
 	for (const std::pair<StringRef, JITEvaluatedSymbol>& kv : rtDyld.getSymbolTable()) {
-	    std::string nm(kv.first);
+	    std::string nm = stripGlobalPrefix(globalPrefix, kv.first);
 	    auto r = symMap.insert(std::make_pair(nm, kv.second));
 	    if (!r.second) {
 		std::cerr << "Already inserted " << nm << std::endl;
@@ -275,7 +277,10 @@ int main(int argc, const char** argv) {
     LLVMInitializeX86Target();
     LLVMInitializeX86AsmPrinter();
 
-    jit_linker jl;
+    std::shared_ptr<llvm::TargetMachine> tm(mkTargetMachine());
+
+    jit_linker jl(tm);
+    tm = 0;
 
     const auto begin = high_resolution_clock::now();
 
