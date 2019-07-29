@@ -107,7 +107,6 @@ runClang(llvm::LLVMContext* ctx,
     // Create source manager
     clang::SourceManager sourceMgr(diagnostics, fileMgr);
 
-
     clang::MemoryBufferCache PCMCache;
     clang::TrivialModuleLoader ml;
 
@@ -156,20 +155,22 @@ runClang(llvm::LLVMContext* ctx,
                              pp.getBuiltinInfo());
     astCtx.InitBuiltinTypes(*target, nullptr);
 
-    std::unique_ptr<clang::CodeGenerator> consumer(
+    // Create a
+    std::unique_ptr<clang::CodeGenerator> codeGen(
         CreateLLVMCodeGen(diagnostics, path,
                           *headerSearchOptsPtr,
                           *preprocessorOptsPtr,
                           codeGenOpts,
                           *ctx,
                           nullptr));
-    consumer->Initialize(astCtx);
+    codeGen->Initialize(astCtx);
 
-    clang::Sema sema(pp, astCtx, *consumer, clang::TU_Complete, nullptr);
+    clang::Sema sema(pp, astCtx, *codeGen, clang::TU_Complete, nullptr);
     ParseAST(sema, false, false);
 
     // Inform the diagnostic client we are done with this source file.
     dc.EndSourceFile();
+
     // Inform the preprocessor we are done.
     pp.EndSourceFile();
     // Notify the diagnostic client that all files were processed.
@@ -179,7 +180,7 @@ runClang(llvm::LLVMContext* ctx,
 	exit(-1);
     }
     //    return consumer.takeModule();
-    return std::unique_ptr<llvm::Module>(consumer->ReleaseModule());
+    return std::unique_ptr<llvm::Module>(codeGen->ReleaseModule());
 }
 
 static
