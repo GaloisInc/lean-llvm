@@ -6,6 +6,7 @@ import .bv
 import .pp
 import .data_layout
 import .llvm_lib
+import .simMonad
 import .simulate
 
 open llvm.
@@ -20,15 +21,17 @@ def main (xs : List String) : IO UInt32 := do
 
   IO.println (pp.render (pp_module m));
 
+  let st0 := initializeState m dl;
+
   let res :=
-     runFunc (symbol.mk "add_offset")
-             [ runtime_value.int 64 (bv.from_nat 64 8)
-             , runtime_value.int 32 (bv.from_nat 32 8)
+     sim.runFunc (symbol.mk "add_offset")
+             [ sim.value.bv 64 (bv.from_nat 64 8)
+             , sim.value.bv 32 (bv.from_nat 32 8)
              ]
-             (state.mk RBMap.empty m dl);
+             st0;
   match res with
   | (Sum.inl err) => throw err
-  | (Sum.inr (runtime_value.int _ x, _)) =>
+  | (Sum.inr (sim.value.bv _ x, _)) =>
        do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString);
           pure 0
   | _ => pure 0

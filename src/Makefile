@@ -25,9 +25,12 @@ SOURCES :=\
   data_layout.lean\
   llvm_ffi.lean \
   llvm_lib.lean\
+  memory.lean\
   simulate.lean\
+  simMonad.lean\
   parser.lean\
-  type_context.lean
+  type_context.lean\
+  value.lean
 
 OLEAN=$(SOURCES:.lean=.olean)
 CPP=$(patsubst %.lean,build/%.cpp,$(SOURCES))
@@ -74,9 +77,12 @@ driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
 orc_test.olean : clang_ffi.olean llvm_ffi.olean
 clang_ffi.olean : llvm_ffi.olean
 llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean llvm_ffi.olean
+memory.olean : ast.olean bv.olean pp.olean simMonad.olean type_context.olean value.olean
+simMonad.olean : ast.olean bv.olean pp.olean type_context.olean value.olean
 pp.olean : ast.olean
-simulate.olean : ast.olean bv.olean pp.olean type_context.olean
+simulate.olean : ast.olean bv.olean memory.olean pp.olean simMonad.olean type_context.olean value.olean
 type_context.olean : alignment.olean ast.olean data_layout.olean
+value.olean : ast.olean bv.olean type_context.olean 
 
 clean:
 	- rm -rf build llvm_exports.o

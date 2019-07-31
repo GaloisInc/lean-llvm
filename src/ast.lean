@@ -148,6 +148,12 @@ inductive block_label
   | anon : Nat -> block_label
 
 
+@[reducible]
+instance symbolHasLess : HasLess symbol := ⟨ λ(x y:symbol) => x.symbol < y.symbol ⟩.
+
+@[reducible]
+instance symbolLtDec (x y:symbol) : Decidable (x < y) := String.decLt x.symbol y.symbol.
+
 namespace block_label.
 
 instance decideEq : ∀(x y:block_label), Decidable (x = y)

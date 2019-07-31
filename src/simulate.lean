@@ -1,110 +1,18 @@
 import init.data.array
 import init.data.int
 import init.data.rbmap
+import init.data.string
 
 import .ast
 import .bv
+import .memory
 import .pp
 import .type_context
+import .value
+import .simMonad
 
 namespace llvm.
-
-inductive runtime_value
-| int (w:Nat) : bv w → runtime_value
-| symbol : symbol → runtime_value
-.
-
-@[reducible]
-def memMap := @RBMap (bv 64) (bv 8) (λx y => decide (x < y)).
-
-@[reducible]
-def regMap := @RBMap ident runtime_value (λx y => decide (x < y)).
-
-structure frame :=
-  (locals : regMap)
-  (func   : define)
-  (curr   : block_label)
-  (prev   : Option block_label)
-
-instance frameInh : Inhabited frame := Inhabited.mk
-  { locals := RBMap.empty
-  , func   := llvm.define.mk none (llvm_type.prim_type prim_type.void) (symbol.mk "") Array.empty false Array.empty none none Array.empty (strmap_empty _) none
-  , curr   := block_label.named ""
-  , prev   := none
-  }.
-
-structure state :=
-  (mem : memMap)
-  (mod : module)
-  (dl  : data_layout).
-
-structure sim_conts (z:Type) :=
-  (kerr : IO.Error → z) /- error continuation -/
-  (kret : Option runtime_value → state → z) /- return continuation -/
-  (kcall : (Option runtime_value → state → z) → symbol → List runtime_value → state → z)
-         /- call continuation -/
-  (kjump : block_label → frame → state → z) /- jump continuation -/
-.
-
-structure sim (a:Type) :=
-  (runSim :
-     ∀{z:Type},
-     (sim_conts z)           /- nonlocal continuations -/ →
-     (a → frame → state → z) /- normal continuation -/ →
-     (frame → state → z)).
-
-namespace sim
-
-instance monad : Monad sim :=
-  { bind := λa b mx mf => sim.mk (λz conts k =>
-       mx.runSim conts (λx => (mf x).runSim conts k))
-  , pure := λa x => sim.mk (λz _ k => k x)
-  }
-
-instance monadExcept : MonadExcept IO.Error sim :=
-  { throw := λa err => sim.mk (λz conts _k _frm _st => conts.kerr err)
-  , catch := λa m handle => sim.mk (λz conts k frm st =>
-      let conts' := { conts with kerr := λerr => (handle err).runSim conts k frm st };
-      m.runSim conts' k frm st)
-  }.
-
-def setFrame (frm:frame) : sim Unit :=
-  sim.mk (λz _ k _ st => k () frm st).
-
-def getFrame : sim frame :=
-  sim.mk (λz _ k frm st => k frm frm st).
-
-def modifyFrame (f: frame → frame) : sim Unit :=
-  sim.mk (λz _ k frm st => k () (f frm) st).
-
-def getState : sim state :=
-  sim.mk (λz _ k frm st => k st frm st).
-
-def setState (st:state) : sim Unit :=
-  sim.mk (λz _ k frm _ => k () frm st).
-
-def assignReg (reg:ident) (v:runtime_value) : sim Unit :=
-  modifyFrame (λfrm => { frm with locals := RBMap.insert frm.locals reg v }).
-
-def lookupReg (reg:ident) : sim runtime_value :=
-  do frm <- getFrame;
-     match RBMap.find frm.locals reg with
-     | none     => throw (IO.userError ("unassigned register: " ++ reg.asString))
-     | (some v) => pure v
-
-def returnVoid {a} : sim a :=
-  sim.mk (λz conts _k _frm st => conts.kret none st).
-
-def returnValue {a} (v:runtime_value) : sim a :=
-  sim.mk (λz conts _k _frm st => conts.kret (some v) st).
-
-def jump {a} (l:block_label) : sim a :=
-  sim.mk (λz conts _k frm st => conts.kjump l frm st).
-
-def call (s:symbol) (args:List runtime_value) : sim (Option runtime_value) :=
-  sim.mk (λz conts k frm st => conts.kcall (λv => k v frm) s args st).
-
-end sim
+namespace sim.
 
 def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 
@@ -115,23 +23,29 @@ def eval_mem_type (t:llvm_type) : sim mem_type :=
       | (some mt) => pure mt)
 
 
-def eval : mem_type → value → sim runtime_value
+def eval : mem_type → llvm.value → sim sim.value
 | _                (value.ident i)    := sim.lookupReg i
-| (mem_type.int w) (value.integer n)  := pure (runtime_value.int w (bv.from_int w n))
-| (mem_type.int w) (value.bool true)  := pure (runtime_value.int w (bv.from_int w 1))
-| (mem_type.int w) (value.bool false) := pure (runtime_value.int w (bv.from_int w 0))
-| (mem_type.int w) (value.null)       := pure (runtime_value.int w (bv.from_int w 0))
-| (mem_type.int w) (value.zero_init)  := pure (runtime_value.int w (bv.from_int w 0))
-| (mem_type.int w) (value.undef)      := pure (runtime_value.int w (bv.from_int w 0)) --???
+| (mem_type.int w) (value.integer n)  := pure (value.bv w (bv.from_int w n))
+| (mem_type.int w) (value.bool true)  := pure (value.bv w (bv.from_int w 1))
+| (mem_type.int w) (value.bool false) := pure (value.bv w (bv.from_int w 0))
+| (mem_type.int w) (value.null)       := pure (value.bv w (bv.from_int w 0))
+| (mem_type.int w) (value.zero_init)  := pure (value.bv w (bv.from_int w 0))
+| (mem_type.int w) (value.undef)      := pure (value.bv w (bv.from_int w 0)) --???
+| (mem_type.int 64) (value.symbol s)  :=
+   do st <- sim.getState;
+      match st.symmap.find s with
+      | (some ptr) => pure (value.bv 64 ptr)
+      | none => throw (IO.userError ("could not resolve symbol: " ++ s.symbol))
 
 | _ _ := throw (IO.userError "bad value/type in evaluation")
 
-def eval_typed (tv:typed value) : sim runtime_value :=
+
+def eval_typed (tv:typed llvm.value) : sim sim.value :=
   do mt <- eval_mem_type tv.type;
      eval mt tv.value.
 
-def int_op (f:∀w, bv w -> bv w -> sim runtime_value) : runtime_value -> runtime_value -> sim runtime_value
-| (runtime_value.int wx vx) (runtime_value.int wy vy) :=
+def int_op (f:∀w, bv w -> bv w -> sim sim.value) : sim.value -> sim.value -> sim sim.value
+| (value.bv wx vx) (value.bv wy vy) :=
     (match decEq wy wx with
     | Decidable.isTrue p  => f wx vx (Eq.rec vy p)
     | Decidable.isFalse _ => throw (IO.userError "expected same-width integer values")
@@ -140,21 +54,21 @@ def int_op (f:∀w, bv w -> bv w -> sim runtime_value) : runtime_value -> runtim
 .
 
 -- TODO, implement overflow checks
-def eval_arith (op:arith_op) (x:runtime_value) (y:runtime_value) : sim runtime_value :=
+def eval_arith (op:arith_op) (x:sim.value) (y:sim.value) : sim sim.value :=
   match op with
-  | (arith_op.add uof sof) => int_op (λ w a b => pure (runtime_value.int w (@bv.add w a b))) x y
-  | (arith_op.sub uof sof) => int_op (λ w a b => pure (runtime_value.int w (@bv.sub w a b))) x y
-  | (arith_op.mul uof sof) => int_op (λ w a b => pure (runtime_value.int w (@bv.mul w a b))) x y
+  | (arith_op.add uof sof) => int_op (λ w a b => pure (value.bv w (@bv.add w a b))) x y
+  | (arith_op.sub uof sof) => int_op (λ w a b => pure (value.bv w (@bv.sub w a b))) x y
+  | (arith_op.mul uof sof) => int_op (λ w a b => pure (value.bv w (@bv.mul w a b))) x y
   | _ => throw (IO.userError "NYE: unimplemented arithmetic operation").
 
-def asPred : runtime_value → sim Bool
-| (runtime_value.int _ v) := if v.to_nat = 0 then pure false else pure true
+def asPred : sim.value → sim Bool
+| (value.bv _ v) := if v.to_nat = 0 then pure false else pure true
 | _ := throw (IO.userError "expected integer value as predicate")
 
-def eval_icmp (op:icmp_op) : runtime_value → runtime_value → sim runtime_value :=
+def eval_icmp (op:icmp_op) : sim.value → sim.value → sim sim.value :=
   int_op (λw a b =>
-    let t := (pure (runtime_value.int 1 (bv.from_nat 1 1)) : sim runtime_value);
-    let f := (pure (runtime_value.int 1 (bv.from_nat 1 0)) : sim runtime_value);
+    let t := (pure (value.bv 1 (bv.from_nat 1 1)) : sim sim.value);
+    let f := (pure (value.bv 1 (bv.from_nat 1 0)) : sim sim.value);
     match op with
     | icmp_op.ieq  => if a.to_nat =  b.to_nat then t else f
     | icmp_op.ine  => if a.to_nat != b.to_nat then t else f
@@ -171,35 +85,35 @@ def eval_icmp (op:icmp_op) : runtime_value → runtime_value → sim runtime_val
   ).
 
 
-def eval_bit (op:bit_op) : runtime_value → runtime_value → sim runtime_value :=
+def eval_bit (op:bit_op) : sim.value → sim.value → sim sim.value :=
   int_op (λw a b =>
     match op with
-    | bit_op.and  => pure (runtime_value.int w (@bv.bitwise_and w a b))
-    | bit_op.or   => pure (runtime_value.int w (@bv.bitwise_or w a b))
-    | bit_op.xor  => pure (runtime_value.int w (@bv.bitwise_xor w a b))
-    | (bit_op.shl uov sov) => pure (runtime_value.int w (@bv.shl w a b))
-    | (bit_op.lshr exact)  => pure (runtime_value.int w (@bv.lshr w a b))
-    | (bit_op.ashr exact)  => pure (runtime_value.int w (@bv.ashr w a b))
+    | bit_op.and  => pure (value.bv w (@bv.bitwise_and w a b))
+    | bit_op.or   => pure (value.bv w (@bv.bitwise_or w a b))
+    | bit_op.xor  => pure (value.bv w (@bv.bitwise_xor w a b))
+    | (bit_op.shl uov sov) => pure (value.bv w (@bv.shl w a b))
+    | (bit_op.lshr exact)  => pure (value.bv w (@bv.lshr w a b))
+    | (bit_op.ashr exact)  => pure (value.bv w (@bv.ashr w a b))
   ).
 
-def eval_conv : conv_op → mem_type → runtime_value → mem_type → sim runtime_value
-| conv_op.trunc (mem_type.int w1) (runtime_value.int wx x) (mem_type.int w2) :=
+def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.value
+| conv_op.trunc (mem_type.int w1) (value.bv wx x) (mem_type.int w2) :=
     if w1 = wx ∧ w1 >= w2 then
-      pure (runtime_value.int w2 (bv.from_nat w2 x.to_nat))
+      pure (value.bv w2 (bv.from_nat w2 x.to_nat))
     else
       throw (IO.userError "invalid trunc operation")
 | conv_op.trunc _ _ _ := throw (IO.userError "invalid trunc operation")
 
-| conv_op.zext (mem_type.int w1) (runtime_value.int wx x) (mem_type.int w2) :=
+| conv_op.zext (mem_type.int w1) (value.bv wx x) (mem_type.int w2) :=
     if w1 = wx ∧ w1 <= w2 then
-      pure (runtime_value.int w2 (bv.from_nat w2 x.to_nat))
+      pure (value.bv w2 (bv.from_nat w2 x.to_nat))
     else
       throw (IO.userError "invalid zext operation")
 | conv_op.zext _ _ _ := throw (IO.userError "invalid zext operation")
 
-| conv_op.sext (mem_type.int w1) (runtime_value.int wx x) (mem_type.int w2) :=
+| conv_op.sext (mem_type.int w1) (value.bv wx x) (mem_type.int w2) :=
     if w1 = wx ∧ w1 <= w2 then
-      pure (runtime_value.int w2 (bv.from_int w2 x.to_int))
+      pure (value.bv w2 (bv.from_int w2 x.to_int))
     else
       throw (IO.userError "invalid sext operation")
 | conv_op.sext _ _ _ := throw (IO.userError "invalid sext operation")
@@ -207,18 +121,20 @@ def eval_conv : conv_op → mem_type → runtime_value → mem_type → sim runt
 | _ _ _ _ := throw (IO.userError "NYI: conversion op")
 
 
-def phi (t:mem_type) (prv:block_label) : List (value × block_label) → sim runtime_value
+def phi (t:mem_type) (prv:block_label) : List (llvm.value × block_label) → sim sim.value
 | [] := throw (IO.userError "phi node not defined for predecessor node")
 | ((v,l)::xs) := if prv = l then eval t v else phi xs
 .
 
-def computeGEP {w} (dl:data_layout) : bv w → List runtime_value → mem_type → sim (bv w)
+def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → sim (bv w)
 | base [] _ := pure base
-| base (runtime_value.int w' v :: offsets) ty :=
+| base (value.bv w' v :: offsets) ty :=
     match ty with
     | (mem_type.array n ty') =>
          if (w = w') then
-           let idx := bv.from_int w (v.to_int * (Int.ofNat (mem_type.sz dl ty').val));
+           let (sz,a) := mem_type.szAndAlign dl ty';
+           let sz' := padToAlignment sz a;
+           let idx := bv.from_int w (v.to_int * (Int.ofNat sz'.val));
            computeGEP (bv.add base idx) offsets ty'
          else
            throw (IO.userError "invalid array index value in GEP")
@@ -238,7 +154,7 @@ def computeGEP {w} (dl:data_layout) : bv w → List runtime_value → mem_type �
 | _ ( _ :: _) _ := throw (IO.userError "invalid index value in GEP")
 
 
-def evalInstr : instruction → sim (Option runtime_value)
+def evalInstr : instruction → sim (Option sim.value)
 | (instruction.ret_void) := sim.returnVoid
 | (instruction.ret v)    := eval_typed v >>= sim.returnValue
 
@@ -283,9 +199,13 @@ def evalInstr : instruction → sim (Option runtime_value)
 | (instruction.call _tail tp fn args) :=
      do t <- eval_mem_type tp;
         fnv <- eval t fn;
+        st <- sim.getState;
         match fnv with
-        | runtime_value.symbol s => List.mmap eval_typed args >>= sim.call s
-        | _ => throw (IO.userError "expected symbol value")
+        | (value.bv 64 bv) =>
+          match st.revsymmap.find bv with
+          | (some s) => List.mmap eval_typed args >>= sim.call s
+          | none => throw (IO.userError "expected function pointer value in call")
+        | _ => throw (IO.userError "expected pointer value in call")
 
 | (instruction.jump l) := sim.jump l
 
@@ -294,6 +214,52 @@ def evalInstr : instruction → sim (Option runtime_value)
         if cv then sim.jump lt else sim.jump lf
 
 | (instruction.unreachable) := unreachable
+
+| (instruction.load ptr _atomicordering _oalign) :=
+   do st <- sim.getState;
+      let dl := st.dl;
+      let tds := st.mod.types;
+      mt <- eval_mem_type ptr.type;
+      pv <- eval mt ptr.value;
+      match (mt,pv) with
+      | (mem_type.ptr st, value.bv 64 p) =>
+          match sym_type_to_mem_type dl tds st with
+          | (some loadtp) => some <$> mem.load dl loadtp p
+          | none => throw (IO.userError "expected loadable pointer type in load" )
+      | _ => throw (IO.userError "expected pointer value in load" )
+
+| (instruction.store val ptr _align) :=
+   do st <- sim.getState;
+      pv <- eval_typed ptr;
+      match pv with
+      | (value.bv 64 p) =>
+         do mt <- eval_mem_type val.type;
+            v <- eval mt val.value;
+            mem.store st.dl mt p v;
+            pure none
+      | _ => throw (IO.userError "expected pointer value in store" )
+
+| (instruction.alloca tp onum oalign) :=
+    do mt <- eval_mem_type tp;
+       dl <- state.dl <$> sim.getState;
+       sz <- match onum with
+             | none => pure (mt.sz dl)
+             | (some num) =>
+                 (do n <- eval_typed num;
+                    match n with
+                    | (value.bv _ n') => pure ((mt.sz dl).mul n'.to_nat)
+                    | _ => throw (IO.userError "expected integer value in alloca instruction"));
+       a <- match oalign with
+            | none => pure (mt.alignment dl)
+            | (some align) =>
+              match toAlignment align with
+              | none => throw (IO.userError ("illegal alignment value in alloca: " ++ toString align))
+              | (some a) => pure (maxAlignment (mt.alignment dl) a);
+       ptr <- (do st <- sim.getState;
+                  let (p,st') := allocOnStack sz a st;
+                  sim.setState st';
+                  pure p);
+       pure (some (value.bv 64 ptr))
 
 | (instruction.gep _bounds base offsets) :=
      do dl <- state.dl <$> sim.getState;
@@ -306,8 +272,8 @@ def evalInstr : instruction → sim (Option runtime_value)
              do base' <- eval baseType base.value;
                 offsets' <- Array.mmap eval_typed offsets;
                 match base' with
-                | runtime_value.int w baseptr =>
-                    (some ∘ runtime_value.int w) <$> computeGEP dl baseptr offsets'.toList (mem_type.array 0 mt)
+                | value.bv w baseptr =>
+                    (some ∘ value.bv w) <$> computeGEP dl baseptr offsets'.toList (mem_type.array 0 mt)
                 | _ => throw (IO.userError "Expected bitvector in GEP base value")
           | none => throw (IO.userError "Invalid GEP, bad base type")
         | _ => throw (IO.userError "Expected pointer type in GEP base")
@@ -344,8 +310,8 @@ def findFunc (s:symbol) (mod:module) : sim define :=
 partial def execBlock {z}
     (_zinh:z)
     (kerr: IO.Error → z)
-    (kret: Option runtime_value → state → z)
-    (kcall: (Option runtime_value → state → z) → symbol → List runtime_value → state → z)
+    (kret: Option sim.value → state → z)
+    (kcall: (Option sim.value → state → z) → symbol → List sim.value → state → z)
     : block_label → frame → state → z
 
 | next frm st :=
@@ -360,7 +326,7 @@ partial def execBlock {z}
       { frm with curr := next, prev := some frm.curr }
       st.
 
-def assignArgs : List (typed ident) → List runtime_value → regMap → sim regMap
+def assignArgs : List (typed ident) → List sim.value → regMap → sim regMap
 | [] [] regs := pure regs
 | (f::fs) (a::as) regs := assignArgs fs as (RBMap.insert regs f.value a)
 | _ _ _ := throw (IO.userError ("Acutal/formal argument mismatch")).
@@ -371,13 +337,13 @@ def entryLabel (d:define) : sim block_label :=
   | none      => throw (IO.userError "definition does not have entry block!").
 
 partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
-  : (Option runtime_value → state → z) → symbol → List runtime_value → state → z
+  : (Option sim.value → state → z) → symbol → List sim.value → state → z
 
 | kret s args st :=
    (do func   <- findFunc s st.mod;
        locals <- assignArgs func.args.toList args RBMap.empty;
        lab    <- entryLabel func;
-       sim.setFrame (frame.mk locals func lab none);
+       sim.setFrame (frame.mk locals func lab none st.stackPtr);
        findBlock lab func >>= evalStmts
    ).runSim
       { kerr  := kerr
@@ -389,7 +355,8 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
       (default _)
       st.
 
-def runFunc : symbol → List runtime_value → state → Sum IO.Error (Option runtime_value × state) :=
+def runFunc : symbol → List sim.value → state → Sum IO.Error (Option sim.value × state) :=
   execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λov st => Sum.inr (ov,st)).
 
+end sim.
 end llvm.

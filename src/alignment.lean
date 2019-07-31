@@ -44,11 +44,12 @@ def mul (x:bytes) (y:Nat) : bytes :=
 def add (x:bytes) (y:bytes) : bytes :=
   bytes.mk (x.val + y.val).
 
+def sub (x:bytes) (y:bytes) : bytes :=
+  bytes.mk (x.val - y.val).
+
 instance inhab : Inhabited bytes := ⟨bytes.mk 0⟩
 
 end bytes.
-
-
 
 namespace llvm
 
@@ -67,8 +68,13 @@ instance alignment.inh : Inhabited alignment := ⟨noAlignment⟩.
 
 def nextMultiple (x:Nat) (n:Nat) : Nat := ((x + n - 1)/n) * n
 
+def prevMultiple (x:Nat) (n:Nat) : Nat := (x/n) * n
+
 def padToAlignment (x:bytes) (al:alignment) : bytes :=
   bytes.mk (nextMultiple x.val (2^al.exponent)).
+
+def padDownToAlignment (x:bytes) (al:alignment) : bytes :=
+  bytes.mk (prevMultiple x.val (2^al.exponent)).
 
 partial def lg2aux : Nat → Nat → Nat
 | r 0 := r
