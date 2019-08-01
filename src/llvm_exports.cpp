@@ -76,53 +76,50 @@ external_object_class* getTrivialObjectClass() {
   return c;
 }
 
+////////////////////////////////////////////////////////////////////////
+// Owned objects
 
+// This owns a LLVM module, and also a pointer to an owner object to ensure
+// the owner is not freed as along as this object is alive.
+//
+// This will not delete the object when it goes out of scope.
 template<typename T>
-class OwnedPtr {
-    T* ptrVal;
-    object* parentObj;
-    OwnedPtr() = delete;
-    OwnedPtr(const OwnedPtr&) = delete;
-public:
-
-    /** Construct an owned ptr.  We assume the object reference count has been incremented. */
-    OwnedPtr(obj_arg par, T* p)
-	: ptrVal(p), parentObj(par) {
-
+struct OwnedExternal {
+    OwnedExternal(object* c, T* v)
+      : ctxObj(c), value(v) {
+	inc_ref(c);
     }
 
-    ~OwnedPtr() {
-	dec_ref(parentObj);
+    ~OwnedExternal() {
+	dec_ref(ctxObj);
     }
 
-    object* parent() {
-	return parentObj;
-    }
 
-    T* ptr() {
-	return ptrVal;
-    }
+    // Lean object for context (we hold a handle to this so that
+    // it is not deleted before we are done with the module).
+    object* ctxObj;
+
+    T* value;
 };
 
-// Casts to given type and invokes delete
 template<typename T>
-void ownedForeach(void * p, b_obj_arg a) {
-    auto d = static_cast<OwnedPtr<T>*>(p);
-    apply_1(a, d->parent());
+void ownedExternalFinalize(void* p) {
+    delete static_cast<OwnedExternal<T>*>(p);
 }
 
-// Casts to given type and invokes delete
 template<typename T>
-void ownedFinalize(void* p) {
-    delete static_cast<OwnedPtr<T>*>(p);
+void ownedExternalForeach(void *p, b_obj_arg a) {
+    auto d = static_cast<OwnedExternal<T>*>(p);
+    apply_1(a, d->ctxObj);
 }
+
 
 // Register a class whose lifetime is controlled by another object.  It holds
 // a reference to the owner while alive and releases it when finalized.
 template<typename T>
 static
 external_object_class* registerOwnedClass() {
-    return register_external_object_class(&ownedFinalize<T>, &ownedForeach<T>);
+    return register_external_object_class(&ownedExternalFinalize<T>, &ownedExternalForeach<T>);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -189,6 +186,9 @@ obj_res newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
 ////////////////////////////////////////////////////////////////////////
 // Types
 
+// According to the LLVM programmer's documentation, llvm::Type objects
+//  are never free'd once allocated.  Thus, we do not need to manage
+//  the storage duration of these objects.
 static inline
 obj_res allocTypeObj(llvm::Type* tp) {
     return alloc_external(getTrivialObjectClass(), tp);
@@ -222,7 +222,7 @@ obj_res getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
     }
 
     llvm::Type* elt_tp = pt->getElementType();
-    obj_res elt_tp_obj = alloc_external(getTrivialObjectClass(), elt_tp);
+    obj_res elt_tp_obj = allocTypeObj( elt_tp );
     return set_io_result(r, mk_option_some(elt_tp_obj));
 }
 
@@ -230,21 +230,59 @@ obj_res getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
 ////////////////////////////////////////////////////////////////////////
 // Values
 
+static
+external_object_class* getValueObjectClass() {
+    // Use static thread to make this thread safe due to static initialization rule.
+    static
+	external_object_class* c(register_external_object_class(&ownedExternalFinalize<llvm::Value>,
+								&ownedExternalForeach<llvm::Value>));
+    return c;
+}
+
 obj_res getOptionalNameObj(llvm::ValueName* nm) {
     return (nm == nullptr)
 	? mk_option_none()
 	: mk_option_some(mk_string(nm->getKey()));
 }
 
-obj_res allocValueObj(llvm::Value* v) {
-    //FIXME: Manage parent liftime.
-    return alloc_external(getTrivialObjectClass(), v);
+obj_res allocValueObj(obj_res parent, llvm::Value* v) {
+    auto e = new OwnedExternal<llvm::Value>(parent, v);
+    return alloc_external(getValueObjectClass(), e);
 }
 
 static
 llvm::Value* toValue(b_obj_arg o) {
-    return static_cast<llvm::Value*>(external_data(o));
+  lean_assert(external_class(o) == getValueObjectClass());
+  return static_cast<OwnedExternal<llvm::Value>*>(external_data(o))->value;
 }
+
+static
+obj_res valueParent(b_obj_arg o) {
+    lean_assert(external_class(o) == getValueObjectClass());
+    return static_cast<OwnedExternal<llvm::Value>*>(external_data(o))->ctxObj;
+}
+
+// llvm::Instruction is a subtype of llvm::Value, so we can use the same
+// allocation strategy for it.
+obj_res allocInstructionObj(obj_res parent, llvm::Instruction* i) {
+  return allocValueObj( parent, i );
+}
+
+static
+llvm::Instruction* toInstruction(b_obj_arg o) {
+  return llvm::dyn_cast<llvm::Instruction>(toValue(o));
+}
+
+// llvm::BasicBlock is a subtype of llvm::Value, so we can use the same
+// allocation strategy for it.
+obj_res allocBasicBlockObj(obj_arg parent, llvm::BasicBlock* bb) {
+  return allocValueObj( parent, bb );
+}
+
+llvm::BasicBlock* toBasicBlock(b_obj_arg o) {
+  return llvm::dyn_cast<llvm::BasicBlock>(toValue(o));
+}
+
 
 obj_res getValueType(b_obj_arg v_obj, obj_arg r) {
     auto tp = toValue(v_obj)->getType();
@@ -253,6 +291,8 @@ obj_res getValueType(b_obj_arg v_obj, obj_arg r) {
 
 obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
     auto v = toValue(v_obj);
+    auto parent = valueParent(v_obj);
+
     obj_res x;
     if (auto a = llvm::dyn_cast<llvm::Argument>(v)) {
 
@@ -260,15 +300,16 @@ obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
 	cnstr_set(x, 0, box(a->getArgNo()));
 
     } else if (auto i = llvm::dyn_cast<llvm::Instruction>(v)) {
-	obj_res i_obj = alloc_external(getTrivialObjectClass(), i);
+
+        inc_ref( v_obj );
 	x = alloc_cnstr(2, 0, 0);
-	cnstr_set(x, 0, i_obj);
+	cnstr_set(x, 0, v_obj);
 
     } else if (auto c = llvm::dyn_cast<llvm::Constant>(v)) {
 
-	obj_res c_obj = alloc_external(getTrivialObjectClass(), c);
+        inc_ref( v_obj );
 	x = alloc_cnstr(3, 0, 0);
-	cnstr_set(x, 0, c_obj);
+	cnstr_set(x, 0, v_obj);
 
     } else {
 	x = alloc_cnstr(0,0,0);
@@ -285,14 +326,9 @@ obj_res getConstantName(b_obj_arg i_obj, obj_arg r) {
 ////////////////////////////////////////////////////////////////////////
 // Instructions
 
-static
-llvm::Instruction* toInstruction(b_obj_arg o) {
-    auto v = toValue(o);
-    return llvm::dyn_cast<llvm::Instruction>(v);
-}
 
 uint8_t instructionLt(b_obj_arg x, b_obj_arg y) {
-    return external_data(x) < external_data(y);
+  return toValue(x) < toValue(y);
 }
 
 obj_res getInstructionName(b_obj_arg i_obj, obj_arg r) {
@@ -313,6 +349,7 @@ obj_res getInstructionOpcode(b_obj_arg i_obj, obj_arg r) {
 
 obj_res getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto ri = llvm::dyn_cast<llvm::ReturnInst>(i);
     if (!ri) {
 	return set_io_result(r, mk_option_none());
@@ -323,25 +360,27 @@ obj_res getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
 	return set_io_result(r, mk_option_none());
     }
 
-    obj_res v_obj = allocValueObj(v);
+    obj_res v_obj = allocValueObj(parent,v);
     return set_io_result(r, mk_option_some(v_obj));
 }
 
 obj_res getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto bop = llvm::dyn_cast<llvm::BinaryOperator>(i);
     if (!bop || bop->getNumOperands() != 2) {
 	return set_io_result(r, mk_option_none());
 
     }
-    obj_res v1_obj = allocValueObj(bop->getOperand(0));
-    obj_res v2_obj = allocValueObj(bop->getOperand(1));
+    obj_res v1_obj = allocValueObj(parent, bop->getOperand(0));
+    obj_res v2_obj = allocValueObj(parent, bop->getOperand(1));
     obj_res pair = mk_pair(v1_obj, v2_obj);
     return set_io_result(r, mk_option_some(pair));
 }
 
 obj_res getCmpInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto ci = llvm::dyn_cast<llvm::CmpInst>(i);
 
     if (!ci || (ci->getNumOperands() != 2)) {
@@ -349,8 +388,8 @@ obj_res getCmpInstData(b_obj_arg i_obj, obj_arg r) {
     }
 
     unsigned int cmpOp = static_cast<unsigned int>(ci->getPredicate());
-    obj_res v1_obj = allocValueObj(ci->getOperand(0));
-    obj_res v2_obj = allocValueObj(ci->getOperand(1));
+    obj_res v1_obj = allocValueObj(parent, ci->getOperand(0));
+    obj_res v2_obj = allocValueObj(parent, ci->getOperand(1));
 
     obj_res tuple = mk_pair(box(cmpOp), mk_pair(v1_obj, v2_obj));
 
@@ -359,13 +398,14 @@ obj_res getCmpInstData(b_obj_arg i_obj, obj_arg r) {
 
 obj_res getBranchInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto bi = llvm::dyn_cast<llvm::BranchInst>(i);
     if (!bi) {
 	return set_io_result(r, mk_option_none());
     }
 
     if (bi->getNumSuccessors() == 1) {
-	obj_res b_obj = alloc_external(getTrivialObjectClass(), bi->getSuccessor(0));
+      obj_res b_obj = allocBasicBlockObj( parent, bi->getSuccessor(0) );
 
 	obj_res x = alloc_cnstr(0, 1, 0);
 	cnstr_set(x, 0, b_obj);
@@ -375,9 +415,9 @@ obj_res getBranchInstData(b_obj_arg i_obj, obj_arg r) {
     } else if (bi->getNumSuccessors() == 2) {
 	obj_res x = alloc_cnstr(1, 3, 0);
 
-	obj_res c_obj = alloc_external(getTrivialObjectClass(), bi->getCondition());
-	obj_res t_obj = alloc_external(getTrivialObjectClass(), bi->getSuccessor(0));
-	obj_res f_obj = alloc_external(getTrivialObjectClass(), bi->getSuccessor(1));
+	obj_res c_obj = allocValueObj( parent, bi->getCondition() );
+	obj_res t_obj = allocBasicBlockObj( parent, bi->getSuccessor(0) );
+	obj_res f_obj = allocBasicBlockObj( parent, bi->getSuccessor(1) );
 
 	cnstr_set(x, 0, c_obj);
 	cnstr_set(x, 1, t_obj);
@@ -391,6 +431,7 @@ obj_res getBranchInstData(b_obj_arg i_obj, obj_arg r) {
 
 obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
   auto i = toInstruction(i_obj);
+  auto parent = valueParent(i_obj);
   auto gep = llvm::dyn_cast<llvm::GetElementPtrInst>(i);
   if( !gep ) {
     return set_io_result( r, mk_option_none() );
@@ -403,11 +444,11 @@ obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
     inbounds = alloc_cnstr( 0, 0, 0 );
   }
 
-  obj_res base_obj = allocValueObj(gep->getPointerOperand());
+  obj_res base_obj = allocValueObj(parent, gep->getPointerOperand());
 
   obj_res arr = alloc_array( 0, 0 );
   for( llvm::Use &u : gep->indices() ) {
-    arr = array_push( arr, allocValueObj( u.get() ));
+    arr = array_push( arr, allocValueObj( parent, u.get() ));
   }
 
   obj_res tuple = mk_pair( inbounds, mk_pair( base_obj, arr ) );
@@ -416,6 +457,7 @@ obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
 
 obj_res getAllocaData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto ai = llvm::dyn_cast<llvm::AllocaInst>(i);
     if (!ai) {
         return set_io_result(r, mk_option_none());
@@ -425,7 +467,7 @@ obj_res getAllocaData(b_obj_arg i_obj, obj_arg r) {
 
     obj_res nelems
 	= ai->isArrayAllocation()
-	? nelems = mk_option_some(allocValueObj(ai->getArraySize()))
+        ? nelems = mk_option_some(allocValueObj(parent, ai->getArraySize()))
 	: mk_option_none();
 
     obj_res align = mk_option_some(box(ai->getAlignment()));
@@ -438,14 +480,15 @@ obj_res getAllocaData(b_obj_arg i_obj, obj_arg r) {
 obj_res getStoreData (b_obj_arg i_obj, obj_arg r) {
 
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
 
     auto si = llvm::dyn_cast<llvm::StoreInst>(i);
     if (!si) {
 	return set_io_result(r, mk_option_none());
     }
 
-    obj_res val_obj = allocValueObj(si->getValueOperand());
-    obj_res ptr_obj = allocValueObj(si->getPointerOperand());
+    obj_res val_obj = allocValueObj(parent, si->getValueOperand());
+    obj_res ptr_obj = allocValueObj(parent, si->getPointerOperand());
     obj_res align = mk_option_some(box(si->getAlignment()));
 
     obj_res tuple = mk_pair(val_obj, mk_pair(ptr_obj, align));
@@ -455,6 +498,7 @@ obj_res getStoreData (b_obj_arg i_obj, obj_arg r) {
 
 obj_res getLoadData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto li = llvm::dyn_cast<llvm::LoadInst>(i);
     if (!li) {
 	return set_io_result(r, mk_option_none());
@@ -462,7 +506,7 @@ obj_res getLoadData(b_obj_arg i_obj, obj_arg r) {
 
     llvm::Value* ptr = li->getPointerOperand();
 
-    obj_res ptr_obj = alloc_external(getTrivialObjectClass(), ptr);
+    obj_res ptr_obj = allocValueObj(parent, ptr);
     obj_res align = mk_option_some(box(li->getAlignment()));
 
     obj_res pair  = mk_pair(ptr_obj, align);
@@ -471,6 +515,7 @@ obj_res getLoadData(b_obj_arg i_obj, obj_arg r) {
 
 obj_res getCastInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto ci = llvm::dyn_cast<llvm::CastInst>(i);
     if (!ci) {
 	return set_io_result(r, mk_option_none());
@@ -478,13 +523,14 @@ obj_res getCastInstData(b_obj_arg i_obj, obj_arg r) {
 
     unsigned int opcode = static_cast<unsigned int>(ci->getOpcode());
 
-    obj_res pair = mk_pair(box(opcode), allocValueObj(ci->getOperand(0)));
+    obj_res pair = mk_pair(box(opcode), allocValueObj(parent, ci->getOperand(0)));
     return set_io_result(r, mk_option_some(pair));
 }
 
 
 obj_res getCallInstData( b_obj_arg i_obj, obj_arg r ) {
   auto i = toInstruction(i_obj);
+  auto parent = valueParent(i_obj);
   auto ci = llvm::dyn_cast<llvm::CallInst>(i);
   if(!ci) {
     return set_io_result( r, mk_option_none() );
@@ -499,13 +545,13 @@ obj_res getCallInstData( b_obj_arg i_obj, obj_arg r ) {
   auto p = array_cptr(arr);
   for(unsigned i = 0; i<n; i++) {
     auto v = ci->getArgOperand(i);
-    *(p++) = allocValueObj(v);
+    *(p++) = allocValueObj(parent, v);
   }
 
   obj_res tuple =
     mk_pair( box(tailcall),
     mk_pair( allocTypeObj(retty),
-    mk_pair( allocValueObj(val),
+    mk_pair( allocValueObj(parent, val),
              arr )));
 
   return set_io_result(r, mk_option_some( tuple ));
@@ -513,15 +559,16 @@ obj_res getCallInstData( b_obj_arg i_obj, obj_arg r ) {
 
 obj_res getSelectInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto si = llvm::dyn_cast<llvm::SelectInst>(i);
     if (!si) {
 	return set_io_result(r, mk_option_none());
     }
 
     obj_res tuple =
-	mk_pair(allocValueObj(si->getCondition()),
-		mk_pair(allocValueObj(si->getTrueValue()),
-			allocValueObj(si->getFalseValue())));
+      mk_pair(allocValueObj(parent, si->getCondition()),
+	      mk_pair(allocValueObj(parent, si->getTrueValue()),
+		      allocValueObj(parent, si->getFalseValue())));
     return set_io_result(r, mk_option_some(tuple));
 
 }
@@ -547,21 +594,13 @@ obj_res isExact(b_obj_arg i_obj, obj_arg r) {
 ////////////////////////////////////////////////////////////////////////
 // Basic blocks
 
-obj_res allocBasicBlockObj(llvm::BasicBlock* bb) {
-    return alloc_external(getTrivialObjectClass(), bb);
-}
-
-llvm::BasicBlock* toBasicBlock(b_obj_arg o) {
-    return llvm::dyn_cast<llvm::BasicBlock>(toValue(o));
-}
-
-
 uint8_t basicBlockLt(b_obj_arg x, b_obj_arg y) {
-    return external_data(x) < external_data(y);
+    return toValue(x) < toValue(y);
 }
 
 obj_res getPhiData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
     auto phi = llvm::dyn_cast<llvm::PHINode>(i);
     if (!phi) {
 	return set_io_result(r, mk_option_none());
@@ -575,7 +614,7 @@ obj_res getPhiData(b_obj_arg i_obj, obj_arg r) {
 	auto v = phi->getIncomingValue(i);
 	auto bb = phi->getIncomingBlock(i);
 
-	*(p++) = mk_pair(allocValueObj(v), allocBasicBlockObj(bb));
+	*(p++) = mk_pair(allocValueObj(parent, v), allocBasicBlockObj(parent, bb));
     }
 
     return set_io_result(r, mk_option_some(arr));
@@ -588,77 +627,30 @@ obj_res getBBName (b_obj_arg f, obj_arg r) {
 
 obj_res getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
     auto bb = toBasicBlock(bb_obj);
+    auto parent = valueParent(bb_obj);
 
     obj_res arr = alloc_array(0, 0);
     for (llvm::Instruction &i : *bb) {
-	obj_res instr_obj = alloc_external(getTrivialObjectClass(), &i);
-	arr = array_push(arr, instr_obj);
+      obj_res instr_obj = allocInstructionObj( parent, &i );
+      arr = array_push(arr, instr_obj);
     }
 
     return set_io_result(r, arr);
 }
 
-////////////////////////////////////////////////////////////////////////
-// Owned objects
 
-// This owns a LLVM module, and also a pointer to an owner object to ensure
-// the owner is not freed as along as this object is alive.
-//
-// This will not delete the object when it goes out of scope.
-template<typename T>
-struct OwnedExternal {
-    OwnedExternal(object* c, T* v)
-      : ctxObj(c), value(v) {
-	inc_ref(c);
-    }
-
-    ~OwnedExternal() {
-	dec_ref(ctxObj);
-    }
-
-
-    // Lean object for context (we hold a handle to this so that
-    // it is not deleted before we are done with the module).
-    object* ctxObj;
-
-    T* value;
-};
-
-template<typename T>
-void ownedExternalFinalize(void* p) {
-    delete static_cast<OwnedExternal<T>*>(p);
-}
-
-template<typename T>
-void ownedExternalForeach(void *p, b_obj_arg a) {
-    auto d = static_cast<OwnedExternal<T>*>(p);
-    apply_1(a, d->ctxObj);
-}
-
-static
-external_object_class* getFunctionObjectClass() {
-    // Use static thread to make this thread safe due to static initialization rule.
-    static
-	external_object_class* c(register_external_object_class(&ownedExternalFinalize<llvm::Function>,
-								&ownedExternalForeach<llvm::Function>));
-    return c;
-}
 
 ////////////////////////////////////////////////////////////////////////
 // Functions
 
 // Allocate a function object (the parent lifetime should exceed this objects).
 obj_res allocFunctionObj(obj_arg parent, llvm::Function* f) {
-    //FIXME: Manage parent liftime.
-    auto e = new OwnedExternal<llvm::Function>(parent, f);
-    return alloc_external(getFunctionObjectClass(), e);
+  return allocValueObj( parent, f );
 }
 
 llvm::Function* toFunction(b_obj_arg o) {
-    lean_assert(external_class(o) == getFunctionObjectClass());
-    return static_cast<OwnedExternal<llvm::Function>*>(external_data(o))->value;
+  return llvm::dyn_cast<llvm::Function>(toValue(o));
 }
-
 
 obj_res getFunctionName(b_obj_arg f, obj_arg r) {
     auto fun = toFunction(f);
@@ -686,12 +678,13 @@ obj_res getReturnType(b_obj_arg f, obj_arg r) {
 
 obj_res getBasicBlockArray(b_obj_arg f, obj_arg r) {
     auto& bblist = toFunction(f)->getBasicBlockList();
+    auto parent = valueParent(f);
 
     size_t sz = bblist.size();
     obj_res arr = alloc_array(sz, sz);
     auto p = array_cptr(arr);
     for(llvm::BasicBlock& bb : bblist) {
-	*(p++) = allocBasicBlockObj(&bb);
+      *(p++) = allocBasicBlockObj(parent, &bb);
     }
     return set_io_result(r, arr);
 }
