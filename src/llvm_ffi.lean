@@ -102,6 +102,9 @@ def basicBlockLt : @& BasicBlock -> @& BasicBlock -> Bool := default _
 @[extern 2 cpp "lean_llvm::getInstructionName"]
 def getInstructionName : @& Instruction -> IO (Option String) := default _
 
+@[extern 2 cpp "lean_llvm::getConstantName"]
+def getConstantName : @& LLVMConstant -> IO (Option String) := default _
+
 @[extern 2 cpp "lean_llvm::getInstructionType"]
 def getInstructionType : @& Instruction -> IO LLVMType := default _
 
@@ -169,6 +172,9 @@ def getLoadData : @& Instruction -> IO (Option (LLVMValue × Option Nat)) := def
 
 @[extern 2 cpp "lean_llvm::getGEPData"]
 def getGEPData : @& Instruction -> IO (Option (Bool × (LLVMValue × Array LLVMValue))) := default _
+
+@[extern 2 cpp "lean_llvm::getCallInstData"]
+def getCallInstData : @& Instruction -> IO (Option (Bool × (LLVMType × (LLVMValue × Array LLVMValue)))) := default _
 
 ------------------------------------------------------------------------
 -- Triple

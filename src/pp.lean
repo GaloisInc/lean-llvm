@@ -380,9 +380,12 @@ def pp_scope : Option String → doc :=
   pp_opt (λnm => text "syncscope" <> parens (pp_string_literal nm))
 .
 
-def pp_call (tailcall:Bool) (ty:llvm_type) (f:value) (args:List (typed value)) : doc :=
+def pp_call (tailcall:Bool) (mty:Option llvm_type) (f:value) (args:List (typed value)) : doc :=
   (if tailcall then text "tail call" else text "call") <+>
-  pp_type ty <+> pp_value f <+>
+  (match mty with
+  | none => pp.text "void"
+  | some ty => pp_type ty) <+>
+  pp_value f <+>
   parens (commas (List.map (λ(x:typed value) => pp_type x.type <+> pp_value x.value) args))
 .
 
@@ -457,7 +460,7 @@ def pp_instr : instruction → doc
     pp_bit_op op <+> pp_type (typed.type x) <+> pp_value (typed.value x) <> comma <+> pp_value y
 | (instruction.conv op x ty) :=
     pp_conv_op op <+> pp_type (typed.type x) <+> pp_value (typed.value x) <+> text "to" <+> pp_type ty
-| (instruction.call tailcall ty f args) := pp_call tailcall ty f args
+| (instruction.call tailcall ty f args) := pp_call tailcall ty f args.toList
 | (instruction.alloca tp len align) := pp_alloca tp len align
 | (instruction.load ptr ord align) := pp_load ptr ord align
 | (instruction.store val ptr align) := pp_store val ptr align

@@ -321,7 +321,7 @@ inductive instruction : Type
   | arith : arith_op -> typed value -> value -> instruction
   | bit : bit_op -> typed value -> value -> instruction
   | conv : conv_op -> typed value -> llvm_type -> instruction
-  | call (tailcall : Bool) : llvm_type -> value -> List (typed value) -> instruction
+  | call (tailcall : Bool) : Option llvm_type -> value -> Array (typed value) -> instruction
   | alloca : llvm_type -> Option (typed value) -> Option Nat -> instruction
   | load : typed value -> Option atomic_ordering -> Option Nat /- align -/ -> instruction
   | store : typed value -> typed value -> Option Nat /- align -/ -> instruction

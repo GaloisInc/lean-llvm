@@ -277,6 +277,11 @@ obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
     return set_io_result(r, x);
 }
 
+obj_res getConstantName(b_obj_arg i_obj, obj_arg r) {
+    auto v = toValue(i_obj);
+    return set_io_result(r, getOptionalNameObj(v->getValueName()));
+}
+
 ////////////////////////////////////////////////////////////////////////
 // Instructions
 
@@ -478,13 +483,40 @@ obj_res getCastInstData(b_obj_arg i_obj, obj_arg r) {
 }
 
 
+obj_res getCallInstData( b_obj_arg i_obj, obj_arg r ) {
+  auto i = toInstruction(i_obj);
+  auto ci = llvm::dyn_cast<llvm::CallInst>(i);
+  if(!ci) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  bool tailcall = ci->isTailCall();
+  llvm::Type *retty = ci->getType();
+  llvm::Value *val = ci->getCalledOperand();
+
+  unsigned n = ci->getNumArgOperands();
+  obj_res arr = alloc_array(n, n);
+  auto p = array_cptr(arr);
+  for(unsigned i = 0; i<n; i++) {
+    auto v = ci->getArgOperand(i);
+    *(p++) = allocValueObj(v);
+  }
+
+  obj_res tuple =
+    mk_pair( box(tailcall),
+    mk_pair( allocTypeObj(retty),
+    mk_pair( allocValueObj(val),
+             arr )));
+
+  return set_io_result(r, mk_option_some( tuple ));
+}
+
 obj_res getSelectInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto si = llvm::dyn_cast<llvm::SelectInst>(i);
     if (!si) {
 	return set_io_result(r, mk_option_none());
     }
-
 
     obj_res tuple =
 	mk_pair(allocValueObj(si->getCondition()),

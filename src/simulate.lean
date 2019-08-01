@@ -19,7 +19,7 @@ def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 def eval_mem_type (t:llvm_type) : sim mem_type :=
   do st <- sim.getState;
      (match lift_mem_type st.dl st.mod.types t with
-      | none => throw (IO.userError "could not lift type")
+      | none => throw (IO.userError ("could not lift type: " ++ pp.render (pp_type t)))
       | (some mt) => pure mt)
 
 
@@ -118,6 +118,10 @@ def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.valu
       throw (IO.userError "invalid sext operation")
 | conv_op.sext _ _ _ := throw (IO.userError "invalid sext operation")
 
+| conv_op.ptr_to_int _ v _ := pure v -- TODO, more checking
+| conv_op.int_to_ptr _ v _ := pure v -- TODO, more checking
+| conv_op.bit_cast _ v _ := pure v -- TODO, more checking!
+
 | _ _ _ _ := throw (IO.userError "NYI: conversion op")
 
 
@@ -196,14 +200,13 @@ def evalInstr : instruction → sim (Option sim.value)
         yv <- eval t y;
         if cv then pure (some xv) else pure (some yv)
 
-| (instruction.call _tail tp fn args) :=
-     do t <- eval_mem_type tp;
-        fnv <- eval t fn;
+| (instruction.call _tail _rettp fn args) :=
+     do fnv <- eval (mem_type.int 64) fn;
         st <- sim.getState;
         match fnv with
         | (value.bv 64 bv) =>
           match st.revsymmap.find bv with
-          | (some s) => List.mmap eval_typed args >>= sim.call s
+          | (some s) => List.mmap eval_typed args.toList >>= sim.call s
           | none => throw (IO.userError "expected function pointer value in call")
         | _ => throw (IO.userError "expected pointer value in call")
 
@@ -334,7 +337,7 @@ def assignArgs : List (typed ident) → List sim.value → regMap → sim regMap
 def entryLabel (d:define) : sim block_label :=
   match Array.getOpt d.body 0 with
   | (some bb) => pure bb.label
-  | none      => throw (IO.userError "definition does not have entry block!").
+  | none      => throw (IO.userError ("definition does not have entry block! " ++ d.name.symbol)).
 
 partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
   : (Option sim.value → state → z) → symbol → List sim.value → state → z

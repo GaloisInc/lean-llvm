@@ -135,7 +135,11 @@ def extractConstant (rawc:LLVMConstant) : IO value :=
   do d <- getConstIntData rawc;
      (match d with
       | (some (_w, v)) => pure (value.integer (Int.ofNat v))
-      | none => throw (IO.userError "unknown constant value"))
+      | none =>
+        do nm <- getConstantName rawc;
+           match nm with
+           | some s => pure (value.symbol (symbol.mk s))
+           | none => throw (IO.userError "unknown constant value"))
 
 def extractValue (ctx:value_context) (rawv:LLVMValue) : IO value :=
   do decmp <- decomposeValue rawv;
@@ -374,6 +378,20 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
                  do vs' <- vs.mmap (λ (vbb: LLVMValue×BasicBlock) =>
                             Prod.mk <$> extractValue ctx vbb.1 <*> extractBlockLabel ctx vbb.2);
                     pure (instruction.phi t vs')
+
+     -- call
+     | 55 =>
+          do d <- getCallInstData rawinstr;
+             match d with
+             | none => throw (IO.userError "expected call instruction")
+             | some (tail,retty,funv,args) =>
+                 do retty' <- extractType retty;
+                    let retty'' := match retty' with
+                                   | llvm_type.prim_type prim_type.void => @none llvm_type
+                                   | _ => some (retty');
+                    funv'  <- extractTypedValue ctx funv;
+                    args'  <- Array.mmap (extractTypedValue ctx) args;
+                    pure (instruction.call tail retty'' funv'.value args')
 
      -- select
      | 56 =>
