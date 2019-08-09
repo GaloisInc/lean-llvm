@@ -195,7 +195,7 @@ protected def from_nat (w:Nat) (val:Nat) : bv w :=
 
 protected def from_int (w:Nat) : Int → bv w
 | (Int.ofNat n)   := bv.from_nat w n
-| (Int.negSucc n) := let n' := (n % 2^(w-1))+1 in bv.from_nat w (2^w - n')
+| (Int.negSucc n) := let n' := (n % 2^(w-1))+1; bv.from_nat w (2^w - n')
 .
 
 protected def to_int {w} (x:bv w) : Int :=
@@ -205,11 +205,9 @@ protected def to_int {w} (x:bv w) : Int :=
     Int.ofNat x.to_nat - Int.ofNat (2^w)
 .
 
-/-
-def bv_ext {w:Nat} : Π{x y:bv w}, x.to_nat = y.to_nat → x = y
+def bv_ext {w:Nat} : ∀{x y:bv w}, x.to_nat = y.to_nat → x = y
 | ⟨xv, xp⟩ ⟨_,yp⟩ rfl := rfl
 .
--/
 
 def add {w:Nat} (x y : bv w) : bv w :=
   bv.from_nat w (x.to_nat + y.to_nat).

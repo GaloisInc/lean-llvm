@@ -106,8 +106,8 @@ def computeInstructionNumbering (rawbb:BasicBlock) (c0:Nat) (imap0:instrMap) : I
   do instrarr <- getInstructionArray rawbb;
      Array.miterate instrarr (c0, imap0)
        (λ _ rawi st =>
-         let (c,imap) := st in
-         do tp <- getInstructionType rawi;
+         do let (c,imap) := st;
+            tp <- getInstructionType rawi;
             isv <- typeIsVoid tp;
             if isv then
               pure (c,imap)
@@ -123,8 +123,8 @@ def computeNumberings (c0:Nat) (fn:LLVMFunction) : IO (bbMap × instrMap) :=
      (_,finalbmap, finalimap) <-
        Array.miterate bbarr (c0, (RBMap.empty : bbMap), (RBMap.empty : instrMap))
          (λ_ rawbb st =>
-            let (c, bmap, imap) := st in
-            do (c', blab) <- extractBBLabel rawbb c;
+            do let (c, bmap, imap) := st;
+               (c', blab) <- extractBBLabel rawbb c;
                bmap' <- pure (RBMap.insert bmap rawbb blab);
                (c'', imap') <- computeInstructionNumbering rawbb c' imap;
                pure (c'',bmap',imap')
@@ -199,6 +199,7 @@ def extractICmpOp (n:Nat) : IO icmp_op :=
   | 41 => pure icmp_op.isle
   | _  => throw (IO.userError ("unexpected icmp operation: " ++ (Nat.toDigits 10 n).asString))
 .
+
 
 def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instruction :=
   do op <- getInstructionOpcode rawinstr;
@@ -316,6 +317,16 @@ def extractInstruction (rawinstr:Instruction) (ctx:value_context) : IO instructi
            do val' <- extractTypedValue ctx val;
               ptr' <- extractTypedValue ctx ptr;
               pure (instruction.store val' ptr' align)
+
+     -- GEP
+     | 33 =>
+        do md <- getGEPData rawinstr;
+           match md with
+           | none => throw (IO.userError "Expected GEP instruction")
+           | (some (inbounds,base,idxes)) =>
+             do base' <- extractTypedValue ctx base;
+                idxes' <- Array.mmap (extractTypedValue ctx) idxes;
+                pure (instruction.gep inbounds base' idxes')
 
      -- trunc
      | 37 => extractCastOp rawinstr ctx (instruction.conv conv_op.trunc)

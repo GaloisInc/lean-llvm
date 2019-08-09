@@ -167,6 +167,9 @@ def getStoreData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue × Opti
 @[extern 2 cpp "lean_llvm::getLoadData"]
 def getLoadData : @& Instruction -> IO (Option (LLVMValue × Option Nat)) := default _
 
+@[extern 2 cpp "lean_llvm::getGEPData"]
+def getGEPData : @& Instruction -> IO (Option (Bool × (LLVMValue × Array LLVMValue))) := default _
+
 ------------------------------------------------------------------------
 -- Triple
 
@@ -180,21 +183,3 @@ instance Triple.inhabited : Inhabited Triple := inferInstanceAs (Inhabited Unit)
 /-- This constructs a compiler session and frees it when done. -/
 @[extern cpp "lean_llvm::newTriple"]
 constant newTriple : String → Triple := default _
-
-------------------------------------------------------------------------
--- CompilerSession
-
-@[extern 3 cpp "lean_llvm::invokeClang"]
-def invokeClang : LLVMContext → @&(Array String) → IO Module := default _
-
-constant CompilerSession := Unit
-
-/-- This constructs a compiler session and frees it when done. -/
-@[extern 2 cpp "lean_llvm::newCompilerSession"]
-constant newCompilerSession : Triple → IO CompilerSession := default _
-
-@[extern 3 cpp "lean_llvm::addFromClangCompile"]
-constant addFromClang : @&CompilerSession → @&(Array String) → IO Unit := default _
-
-@[extern 4 cpp "lean_llvm::lookupFn"]
-constant lookupFn : @&CompilerSession → @&String → ∀(t:@&Type), IO t := default _
