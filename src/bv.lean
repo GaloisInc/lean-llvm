@@ -194,8 +194,8 @@ protected def from_nat (w:Nat) (val:Nat) : bv w :=
   ⟨val % 2^w, Nat.modLt val (Nat.posPowOfPos w rfl) ⟩.
 
 protected def from_int (w:Nat) : Int → bv w
-| (Int.ofNat n)   := bv.from_nat w n
-| (Int.negSucc n) := let n' := (n % 2^(w-1))+1; bv.from_nat w (2^w - n')
+| Int.ofNat n   => bv.from_nat w n
+| Int.negSucc n => let n' := (n % 2^(w-1))+1; bv.from_nat w (2^w - n')
 .
 
 protected def to_int {w} (x:bv w) : Int :=
@@ -206,7 +206,7 @@ protected def to_int {w} (x:bv w) : Int :=
 .
 
 def bv_ext {w:Nat} : ∀{x y:bv w}, x.to_nat = y.to_nat → x = y
-| ⟨xv, xp⟩ ⟨_,yp⟩ rfl := rfl
+| ⟨xv, xp⟩, ⟨_,yp⟩, rfl => rfl
 .
 
 def add {w:Nat} (x y : bv w) : bv w :=

@@ -23,47 +23,47 @@ inductive ident
 namespace ident.
 
 def asString : ident → String
-| (named nm) := "%" ++ nm
-| (anon i)   := "%" ++ (Nat.toDigits 10 i).asString
+| (named nm) => "%" ++ nm
+| (anon i)   => "%" ++ (Nat.toDigits 10 i).asString
 .
 
 def lt : ident → ident → Prop
-| (ident.named x) (ident.named y) := x < y
-| (ident.named _) (ident.anon _)  := True
-| (ident.anon x)  (ident.anon y)  := x < y
-| (ident.anon _)  (ident.named _) := False
+| ident.named x, ident.named y => x < y
+| ident.named _, ident.anon _  => True
+| ident.anon x,  ident.anon y  => x < y
+| ident.anon _,  ident.named _ => False
 .
 
 instance : HasLess ident := ⟨lt⟩.
 
 instance decideEq : ∀(x y:ident), Decidable (x = y)
-| (ident.named a) (ident.named b) :=
+| ident.named a, ident.named b =>
     (match decEq a b with
      | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
      | Decidable.isFalse p => Decidable.isFalse (fun H => ident.noConfusion H p)
     )
-| (ident.anon a) (ident.anon b) :=
+| ident.anon a,  ident.anon b =>
     (match decEq a b with
      | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
      | Decidable.isFalse p => Decidable.isFalse (fun H => ident.noConfusion H p)
     )
-| (ident.anon _) (ident.named _) := Decidable.isFalse (fun H => ident.noConfusion H)
-| (ident.named _) (ident.anon _) := Decidable.isFalse (fun H => ident.noConfusion H)
+| ident.anon _,  ident.named _ => Decidable.isFalse (fun H => ident.noConfusion H)
+| ident.named _, ident.anon _  => Decidable.isFalse (fun H => ident.noConfusion H)
 
 
 instance decideLt : ∀(x y:ident), Decidable (x < y)
-| (ident.named x) (ident.named y) :=
+| ident.named x, ident.named y =>
   (match String.decLt x y with
    | Decidable.isTrue  p => Decidable.isTrue p
    | Decidable.isFalse p => Decidable.isFalse p
    )
-| (ident.anon x) (ident.anon y) :=
+| ident.anon x, ident.anon y =>
   (match Nat.decLt x y with
    | Decidable.isTrue  p => Decidable.isTrue p
    | Decidable.isFalse p => Decidable.isFalse p
    )
-| (ident.named _) (ident.anon _)  := Decidable.isTrue True.intro
-| (ident.anon _)  (ident.named _) := Decidable.isFalse False.elim
+| ident.named _, ident.anon _  => Decidable.isTrue True.intro
+| ident.anon _,  ident.named _ => Decidable.isFalse False.elim
 .
 
 end ident.
@@ -151,18 +151,18 @@ inductive block_label
 namespace block_label.
 
 instance decideEq : ∀(x y:block_label), Decidable (x = y)
-| (block_label.named a) (block_label.named b) :=
+| block_label.named a, block_label.named b =>
     (match decEq a b with
      | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
      | Decidable.isFalse p => Decidable.isFalse (fun H => block_label.noConfusion H p)
     )
-| (block_label.anon a) (block_label.anon b) :=
+| block_label.anon a, block_label.anon b =>
     (match decEq a b with
      | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
      | Decidable.isFalse p => Decidable.isFalse (fun H => block_label.noConfusion H p)
     )
-| (block_label.anon _) (block_label.named _) := Decidable.isFalse (fun H => block_label.noConfusion H)
-| (block_label.named _) (block_label.anon _) := Decidable.isFalse (fun H => block_label.noConfusion H)
+| block_label.anon _, block_label.named _ => Decidable.isFalse (fun H => block_label.noConfusion H)
+| block_label.named _, block_label.anon _ => Decidable.isFalse (fun H => block_label.noConfusion H)
 .
 
 end block_label.

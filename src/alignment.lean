@@ -2,7 +2,7 @@
 import init.data.rbmap
 
 
-namespace RBNode.
+namespace RBNode
 universes u v
 variables {α : Type u} {β : α → Type v}
 section
@@ -10,14 +10,14 @@ section
 variable (lt : α → α → Bool)
 
 @[specialize] def upperBound : RBNode α β → α → Option (Sigma β) → Option (Sigma β)
-| leaf x ub               := ub
-| (node _ a ky vy b) x ub :=
+| leaf, x, ub             => ub
+| node _ a ky vy b, x, ub =>
    if lt x ky then upperBound a x (some ⟨ky, vy⟩)
    else if lt ky x then upperBound b x ub
    else some ⟨ky, vy⟩
 end
 
-end RBNode.
+end RBNode
 
 namespace RBMap
 universes u v
@@ -26,7 +26,7 @@ variables {α : Type u} {β : Type v} {lt : α → α → Bool}
 /- (upperBound k) retrieves the kv pair of the smallest key larger than or equal to `k`,
    if it exists -/
 @[inline] def upperBound : RBMap α β lt → α → Option (Sigma (fun (k : α) => β))
-| ⟨t, _⟩ x := t.upperBound lt x none
+| ⟨t, _⟩, x => t.upperBound lt x none
 
 end RBMap.
 
@@ -71,8 +71,8 @@ def padToAlignment (x:bytes) (al:alignment) : bytes :=
   bytes.mk (nextMultiple x.val (2^al.exponent)).
 
 partial def lg2aux : Nat → Nat → Nat
-| r 0 := r
-| r n := lg2aux (r+1) (n/2)
+| r, 0 => r
+| r, n => lg2aux (r+1) (n/2)
 
 def toAlignment (x:Nat) : Option alignment :=
   let l := lg2aux 0 (x/2);

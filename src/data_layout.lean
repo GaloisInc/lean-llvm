@@ -110,24 +110,24 @@ def addVectorAlignment (x:Nat) (a:alignment) (dl:data_layout) : data_layout :=
 
 def addLayoutSpec (dl:data_layout) : layout_spec → Except String data_layout
 
-| (layout_spec.endianness e) := pure { dl with int_layout := e }
+| (layout_spec.endianness e) => pure { dl with int_layout := e }
 
-| (layout_spec.stack_align sa) :=
+| (layout_spec.stack_align sa) =>
      match toAlignment sa with
      | none => throw ("invalid stack alignment: " ++ (Nat.toDigits 10 sa).asString)
      | (some a) => pure { dl with stack_alignment := a }
 
-| (layout_spec.aggregate_align abi _pref) :=
+| (layout_spec.aggregate_align abi _pref) =>
      match toAlignment abi with
      | none => throw ("invalid aggregate alignment: " ++ (Nat.toDigits 10 abi).asString)
      | (some a) => pure { dl with aggregate_alignment := a }
 
-| (layout_spec.pointer_size addr sz abi _pref _idx) :=
+| (layout_spec.pointer_size addr sz abi _pref _idx) =>
      match toAlignment abi with
      | none => throw ("invalid pointer alignment: " ++ (Nat.toDigits 10 abi).asString)
      | (some a) => pure { dl with ptr_size := toBytes sz, ptr_align := a }
 
-| (layout_spec.align_size tp sz abi _pref) :=
+| (layout_spec.align_size tp sz abi _pref) =>
      match toAlignment abi with
      | none => throw ("invalid alignment: " ++ (Nat.toDigits 10 abi).asString)
      | (some a) =>
@@ -136,7 +136,7 @@ def addLayoutSpec (dl:data_layout) : layout_spec → Except String data_layout
        | align_type.vector    => pure (addVectorAlignment sz a dl)
        | align_type.float     => pure (addFloatAlignment sz a dl)
 
-| _ := pure dl -- ignore other layout specs
+| _ => pure dl -- ignore other layout specs
 
 def computeDataLayout (ls:List layout_spec) : Except String data_layout :=
   List.mfoldl addLayoutSpec default_data_layout ls.
