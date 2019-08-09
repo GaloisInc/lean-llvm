@@ -12,8 +12,8 @@ namespace Option
   universes u v.
 
   def mmap {m:Type u → Type v} {α β:Type u} [Applicative m] (f:α → m β) : Option α → m (Option β)
-  | none := pure none
-  | (some x) := some <$> f x
+  | none => pure none
+  | (some x) => some <$> f x
   .
 
 end Option.
@@ -43,7 +43,7 @@ def typeIsVoid (tp : LLVMType) : IO Bool :=
      | _ => pure false
 
 partial def extractType : LLVMType → IO llvm_type
-| tp :=
+| tp =>
   do id <- getTypeTag tp;
      match id with
      | 0 => pure (llvm_type.prim_type prim_type.void)

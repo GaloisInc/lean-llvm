@@ -24,20 +24,19 @@ def eval_mem_type (t:llvm_type) : sim mem_type :=
 
 
 def eval : mem_type → llvm.value → sim sim.value
-| _                (value.ident i)    := sim.lookupReg i
-| (mem_type.int w) (value.integer n)  := pure (value.bv w (bv.from_int w n))
-| (mem_type.int w) (value.bool true)  := pure (value.bv w (bv.from_int w 1))
-| (mem_type.int w) (value.bool false) := pure (value.bv w (bv.from_int w 0))
-| (mem_type.int w) (value.null)       := pure (value.bv w (bv.from_int w 0))
-| (mem_type.int w) (value.zero_init)  := pure (value.bv w (bv.from_int w 0))
-| (mem_type.int w) (value.undef)      := pure (value.bv w (bv.from_int w 0)) --???
-| (mem_type.int 64) (value.symbol s)  :=
+| _,              value.ident i    => sim.lookupReg i
+| mem_type.int w, value.integer n  => pure (value.bv w (bv.from_int w n))
+| mem_type.int w, value.bool true  => pure (value.bv w (bv.from_int w 1))
+| mem_type.int w, value.bool false => pure (value.bv w (bv.from_int w 0))
+| mem_type.int w, value.null       => pure (value.bv w (bv.from_int w 0))
+| mem_type.int w, value.zero_init  => pure (value.bv w (bv.from_int w 0))
+| mem_type.int w, value.undef      => pure (value.bv w (bv.from_int w 0)) --???
+| mem_type.int 64, value.symbol s  =>
    do st <- sim.getState;
       match st.symmap.find s with
       | (some ptr) => pure (value.bv 64 ptr)
       | none => throw (IO.userError ("could not resolve symbol: " ++ s.symbol))
-
-| _ _ := throw (IO.userError "bad value/type in evaluation")
+| _, _ => throw (IO.userError "bad value/type in evaluation")
 
 
 def eval_typed (tv:typed llvm.value) : sim sim.value :=
@@ -45,13 +44,11 @@ def eval_typed (tv:typed llvm.value) : sim sim.value :=
      eval mt tv.value.
 
 def int_op (f:∀w, bv w -> bv w -> sim sim.value) : sim.value -> sim.value -> sim sim.value
-| (value.bv wx vx) (value.bv wy vy) :=
-    (match decEq wy wx with
+| value.bv wx vx, value.bv wy vy =>
+    match decEq wy wx with
     | Decidable.isTrue p  => f wx vx (Eq.rec vy p)
     | Decidable.isFalse _ => throw (IO.userError "expected same-width integer values")
-    )
-| _ _ := throw (IO.userError "expected integer arguments to int_op")
-.
+| _, _ => throw (IO.userError "expected integer arguments to int_op")
 
 -- TODO, implement overflow checks
 def eval_arith (op:arith_op) (x:sim.value) (y:sim.value) : sim sim.value :=
@@ -62,8 +59,8 @@ def eval_arith (op:arith_op) (x:sim.value) (y:sim.value) : sim sim.value :=
   | _ => throw (IO.userError "NYE: unimplemented arithmetic operation").
 
 def asPred : sim.value → sim Bool
-| (value.bv _ v) := if v.to_nat = 0 then pure false else pure true
-| _ := throw (IO.userError "expected integer value as predicate")
+| value.bv _ v, => if v.to_nat = 0 then pure false else pure true
+| _ => throw (IO.userError "expected integer value as predicate")
 
 def eval_icmp (op:icmp_op) : sim.value → sim.value → sim sim.value :=
   int_op (λw a b =>
@@ -97,44 +94,45 @@ def eval_bit (op:bit_op) : sim.value → sim.value → sim sim.value :=
   ).
 
 def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.value
-| conv_op.trunc (mem_type.int w1) (value.bv wx x) (mem_type.int w2) :=
+| conv_op.trunc, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 >= w2 then
       pure (value.bv w2 (bv.from_nat w2 x.to_nat))
     else
       throw (IO.userError "invalid trunc operation")
-| conv_op.trunc _ _ _ := throw (IO.userError "invalid trunc operation")
+| conv_op.trunc, _, _, _ => throw (IO.userError "invalid trunc operation")
 
-| conv_op.zext (mem_type.int w1) (value.bv wx x) (mem_type.int w2) :=
+| conv_op.zext, mem_type.int w1, value.bv wx x, mem_type.int w2) =>
     if w1 = wx ∧ w1 <= w2 then
       pure (value.bv w2 (bv.from_nat w2 x.to_nat))
     else
       throw (IO.userError "invalid zext operation")
-| conv_op.zext _ _ _ := throw (IO.userError "invalid zext operation")
+| conv_op.zext, _, _, _ => throw (IO.userError "invalid zext operation")
 
-| conv_op.sext (mem_type.int w1) (value.bv wx x) (mem_type.int w2) :=
+
+| conv_op.sext, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 <= w2 then
       pure (value.bv w2 (bv.from_int w2 x.to_int))
     else
       throw (IO.userError "invalid sext operation")
-| conv_op.sext _ _ _ := throw (IO.userError "invalid sext operation")
+| conv_op.sext, _, _, _ => throw (IO.userError "invalid sext operation")
 
-| conv_op.ptr_to_int _ v _ := pure v -- TODO, more checking
-| conv_op.int_to_ptr _ v _ := pure v -- TODO, more checking
-| conv_op.bit_cast _ v _ := pure v -- TODO, more checking!
+| conv_op.ptr_to_int, _, v, _ => pure v -- TODO, more checking
+| conv_op.int_to_ptr, _, v, _ => pure v -- TODO, more checking
+| conv_op.bit_cast, _, v, _ => pure v -- TODO, more checking!
 
-| _ _ _ _ := throw (IO.userError "NYI: conversion op")
+| _, _, _, _, := throw (IO.userError "NYI: conversion op")
 
 
 def phi (t:mem_type) (prv:block_label) : List (llvm.value × block_label) → sim sim.value
-| [] := throw (IO.userError "phi node not defined for predecessor node")
-| ((v,l)::xs) := if prv = l then eval t v else phi xs
-.
+| [] => throw (IO.userError "phi node not defined for predecessor node")
+| ((v,l)::xs) => if prv = l then eval t v else phi xs
+
 
 def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → sim (bv w)
-| base [] _ := pure base
-| base (value.bv w' v :: offsets) ty :=
+| base, [], _ => pure base
+| base, value.bv w' v :: offsets, ty =>
     match ty with
-    | (mem_type.array n ty') =>
+    | mem_type.array n ty' =>
          if (w = w') then
            let (sz,a) := mem_type.szAndAlign dl ty';
            let sz' := padToAlignment sz a;
@@ -143,64 +141,64 @@ def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → s
          else
            throw (IO.userError "invalid array index value in GEP")
 
-    | (mem_type.struct si) =>
+    | mem_type.struct si =>
          match si.fields.getOpt v.to_nat with
          | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
          | none => throw (IO.userError "invalid struct index value in GEP")
 
-    | (mem_type.packed_struct si) =>
+    | mem_type.packed_struct si =>
          match si.fields.getOpt v.to_nat with
          | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
          | none => throw (IO.userError "invalid struct index value in GEP")
 
     | _ => throw (IO.userError "Invalid GEP")
 
-| _ ( _ :: _) _ := throw (IO.userError "invalid index value in GEP")
+| _, _::_, _ => throw (IO.userError "invalid index value in GEP")
 
 
 def evalInstr : instruction → sim (Option sim.value)
-| (instruction.ret_void) := sim.returnVoid
-| (instruction.ret v)    := eval_typed v >>= sim.returnValue
+| instruction.ret_void => sim.returnVoid
+| instruction.ret v    => eval_typed v >>= sim.returnValue
 
-| (instruction.phi tp xs) :=
+| instruction.phi tp xs =>
      do frm <- sim.getFrame;
         t  <- eval_mem_type tp;
         match frm.prev with
         | none => throw (IO.userError "phi nodes not allowed in entry block")
         | (some prv) => some <$> phi t prv xs.toList
 
-| (instruction.arith op x y) :=
+| instruction.arith op x y =>
      do t  <- eval_mem_type x.type;
         xv <- eval t x.value;
         yv <- eval t y;
         some <$> eval_arith op xv yv
 
-| (instruction.bit op x y) :=
+| instruction.bit op x y =>
      do t  <- eval_mem_type x.type;
         xv <- eval t x.value;
         yv <- eval t y;
         some <$> eval_bit op xv yv
 
-| (instruction.conv op x outty) :=
+| instruction.conv op x outty =>
      do t  <- eval_mem_type x.type;
         xv <- eval t x.value;
         t' <- eval_mem_type outty;
         some <$> eval_conv op t xv t'
 
-| (instruction.icmp op x y) :=
+| instruction.icmp op x y =>
      do t  <- eval_mem_type x.type;
         xv <- eval t x.value;
         yv <- eval t y;
         some <$> eval_icmp op xv yv
 
-| (instruction.select c x y) :=
+| instruction.select c x y =>
      do cv <- eval_typed c >>= asPred;
         t  <- eval_mem_type x.type;
         xv <- eval t x.value;
         yv <- eval t y;
         if cv then pure (some xv) else pure (some yv)
 
-| (instruction.call _tail _rettp fn args) :=
+| instruction.call _tail _rettp fn args =>
      do fnv <- eval (mem_type.int 64) fn;
         st <- sim.getState;
         match fnv with
@@ -210,15 +208,15 @@ def evalInstr : instruction → sim (Option sim.value)
           | none => throw (IO.userError "expected function pointer value in call")
         | _ => throw (IO.userError "expected pointer value in call")
 
-| (instruction.jump l) := sim.jump l
+| instruction.jump l => sim.jump l
 
-| (instruction.br c lt lf) :=
+| instruction.br c lt lf =>
      do cv <- eval_typed c >>= asPred;
         if cv then sim.jump lt else sim.jump lf
 
-| (instruction.unreachable) := unreachable
+| instruction.unreachable => unreachable
 
-| (instruction.load ptr _atomicordering _oalign) :=
+| instruction.load ptr _atomicordering _oalign =>
    do st <- sim.getState;
       let dl := st.dl;
       let tds := st.mod.types;
@@ -231,7 +229,7 @@ def evalInstr : instruction → sim (Option sim.value)
           | none => throw (IO.userError "expected loadable pointer type in load" )
       | _ => throw (IO.userError "expected pointer value in load" )
 
-| (instruction.store val ptr _align) :=
+| instruction.store val ptr _align =>
    do st <- sim.getState;
       pv <- eval_typed ptr;
       match pv with
@@ -242,7 +240,7 @@ def evalInstr : instruction → sim (Option sim.value)
             pure none
       | _ => throw (IO.userError "expected pointer value in store" )
 
-| (instruction.alloca tp onum oalign) :=
+| instruction.alloca tp onum oalign =>
     do mt <- eval_mem_type tp;
        dl <- state.dl <$> sim.getState;
        sz <- match onum with
@@ -264,7 +262,7 @@ def evalInstr : instruction → sim (Option sim.value)
                   pure p);
        pure (some (value.bv 64 ptr))
 
-| (instruction.gep _bounds base offsets) :=
+| instruction.gep _bounds base offsets =>
      do dl <- state.dl <$> sim.getState;
         tds <- (module.types ∘ state.mod) <$> sim.getState;
         baseType <- eval_mem_type base.type;
@@ -281,8 +279,7 @@ def evalInstr : instruction → sim (Option sim.value)
           | none => throw (IO.userError "Invalid GEP, bad base type")
         | _ => throw (IO.userError "Expected pointer type in GEP base")
 
-| _ := throw (IO.userError "NYE: unimplemented instruction")
-.
+| _ => throw (IO.userError "NYE: unimplemented instruction")
 
 def evalStmt (s:stmt) : sim Unit :=
   do res <- evalInstr s.instr;
@@ -317,32 +314,32 @@ partial def execBlock {z}
     (kcall: (Option sim.value → state → z) → symbol → List sim.value → state → z)
     : block_label → frame → state → z
 
-| next frm st :=
+| next, frm, st =>
    (findBlock next frm.func >>= evalStmts).runSim
       { kerr  := kerr
       , kret  := kret
       , kcall := kcall
       , kjump := execBlock
       }
-      (λ_ _ _ => kerr (IO.userError ("expected block terminatror at the end of block: "
-                                    ++ pp.render (pp_label next))))
+      (λ_ _ _ => kerr $ IO.userError ("expected block terminatror at the end of block: "
+                                    ++ pp.render (pp_label next)))
       { frm with curr := next, prev := some frm.curr }
-      st.
+      st
 
 def assignArgs : List (typed ident) → List sim.value → regMap → sim regMap
-| [] [] regs := pure regs
-| (f::fs) (a::as) regs := assignArgs fs as (RBMap.insert regs f.value a)
-| _ _ _ := throw (IO.userError ("Acutal/formal argument mismatch")).
+| [], [], regs => pure regs
+| f::fs, a::as, regs => assignArgs fs as (RBMap.insert regs f.value a)
+| _, _, _ => throw (IO.userError ("Acutal/formal argument mismatch")).
 
 def entryLabel (d:define) : sim block_label :=
   match Array.getOpt d.body 0 with
-  | (some bb) => pure bb.label
-  | none      => throw (IO.userError ("definition does not have entry block! " ++ d.name.symbol)).
+  | some bb => pure bb.label
+  | none    => throw $ IO.userError ("definition does not have entry block! " ++ d.name.symbol)
 
 partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
   : (Option sim.value → state → z) → symbol → List sim.value → state → z
 
-| kret s args st :=
+| kret, s, args, st =>
    (do func   <- findFunc s st.mod;
        locals <- assignArgs func.args.toList args RBMap.empty;
        lab    <- entryLabel func;

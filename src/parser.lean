@@ -7,8 +7,8 @@ import init.data.char
 
 namespace Nat.
   def fromDigitsAux : List Nat → Nat → Nat
-  | [] n := n
-  | (d::ds) n := fromDigitsAux ds (n*10 + d).
+  | [],    n => n
+  | d::ds, n => fromDigitsAux ds (n*10 + d).
 
   def fromDigits (ds:List Nat) := fromDigitsAux ds 0.
 end Nat.
@@ -27,7 +27,7 @@ instance monad : Monad parse :=
   { bind := λa b mx mf => parse.mk (λz kerr kfail k =>
               mx.runParse z kerr kfail (λx =>
                 (mf x).runParse z kerr kfail k))
-  , pure := λa x => parse.mk (λz kerr kfail k => k x) 
+  , pure := λa x => parse.mk (λz kerr kfail k => k x)
   }.
 
 instance alternative : Alternative parse :=
@@ -93,7 +93,7 @@ def choosePrefix {α} : List (String × parse α) → parse α :=
 partial def manyAux {α} (m:parse α) (z:Type) (someZ : z)
   : (List α → List String → String → z) → List String → String → z
 
-| k stk str :=
+| k, stk, str =>
    let kend := λ(_:List String) (_:String) => k [] stk str;
    m.runParse z
      kend
