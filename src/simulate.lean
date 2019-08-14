@@ -1,7 +1,4 @@
-import init.data.array
-import init.data.int
-import init.data.rbmap
-import init.data.string
+
 
 import .ast
 import .bv
@@ -59,7 +56,7 @@ def eval_arith (op:arith_op) (x:sim.value) (y:sim.value) : sim sim.value :=
   | _ => throw (IO.userError "NYE: unimplemented arithmetic operation").
 
 def asPred : sim.value → sim Bool
-| value.bv _ v, => if v.to_nat = 0 then pure false else pure true
+| value.bv _ v => if v.to_nat = 0 then pure false else pure true
 | _ => throw (IO.userError "expected integer value as predicate")
 
 def eval_icmp (op:icmp_op) : sim.value → sim.value → sim sim.value :=
@@ -93,6 +90,7 @@ def eval_bit (op:bit_op) : sim.value → sim.value → sim sim.value :=
     | (bit_op.ashr exact)  => pure (value.bv w (@bv.ashr w a b))
   ).
 
+
 def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.value
 | conv_op.trunc, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 >= w2 then
@@ -101,7 +99,8 @@ def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.valu
       throw (IO.userError "invalid trunc operation")
 | conv_op.trunc, _, _, _ => throw (IO.userError "invalid trunc operation")
 
-| conv_op.zext, mem_type.int w1, value.bv wx x, mem_type.int w2) =>
+
+| conv_op.zext, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 <= w2 then
       pure (value.bv w2 (bv.from_nat w2 x.to_nat))
     else
@@ -120,12 +119,12 @@ def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.valu
 | conv_op.int_to_ptr, _, v, _ => pure v -- TODO, more checking
 | conv_op.bit_cast, _, v, _ => pure v -- TODO, more checking!
 
-| _, _, _, _, := throw (IO.userError "NYI: conversion op")
+| _, _, _, _ => throw (IO.userError "NYI: conversion op")
 
 
 def phi (t:mem_type) (prv:block_label) : List (llvm.value × block_label) → sim sim.value
 | [] => throw (IO.userError "phi node not defined for predecessor node")
-| ((v,l)::xs) => if prv = l then eval t v else phi xs
+| (v,l)::xs => if prv = l then eval t v else phi xs
 
 
 def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → sim (bv w)
@@ -165,7 +164,7 @@ def evalInstr : instruction → sim (Option sim.value)
         t  <- eval_mem_type tp;
         match frm.prev with
         | none => throw (IO.userError "phi nodes not allowed in entry block")
-        | (some prv) => some <$> phi t prv xs.toList
+        | some prv => some <$> phi t prv xs.toList
 
 | instruction.arith op x y =>
      do t  <- eval_mem_type x.type;
@@ -202,9 +201,9 @@ def evalInstr : instruction → sim (Option sim.value)
      do fnv <- eval (mem_type.int 64) fn;
         st <- sim.getState;
         match fnv with
-        | (value.bv 64 bv) =>
+        | value.bv 64 bv =>
           match st.revsymmap.find bv with
-          | (some s) => List.mmap eval_typed args.toList >>= sim.call s
+          | some s => List.mmap eval_typed args.toList >>= sim.call s
           | none => throw (IO.userError "expected function pointer value in call")
         | _ => throw (IO.userError "expected pointer value in call")
 
@@ -222,22 +221,22 @@ def evalInstr : instruction → sim (Option sim.value)
       let tds := st.mod.types;
       mt <- eval_mem_type ptr.type;
       pv <- eval mt ptr.value;
-      match (mt,pv) with
-      | (mem_type.ptr st, value.bv 64 p) =>
+      match mt, pv with
+      | mem_type.ptr st, value.bv 64 p =>
           match sym_type_to_mem_type dl tds st with
-          | (some loadtp) => some <$> mem.load dl loadtp p
+          | some loadtp => some <$> mem.load dl loadtp p
           | none => throw (IO.userError "expected loadable pointer type in load" )
-      | _ => throw (IO.userError "expected pointer value in load" )
+      | _, _ => throw (IO.userError "expected pointer value in load" )
 
 | instruction.store val ptr _align =>
    do st <- sim.getState;
       pv <- eval_typed ptr;
       match pv with
-      | (value.bv 64 p) =>
-         do mt <- eval_mem_type val.type;
-            v <- eval mt val.value;
-            mem.store st.dl mt p v;
-            pure none
+      | value.bv 64 p =>
+            do mt <- eval_mem_type val.type;
+               v <- eval mt val.value;
+               mem.store st.dl mt p v; -- (bv.from_nat 64 p.to_nat) v;
+               pure none
       | _ => throw (IO.userError "expected pointer value in store" )
 
 | instruction.alloca tp onum oalign =>
@@ -245,31 +244,32 @@ def evalInstr : instruction → sim (Option sim.value)
        dl <- state.dl <$> sim.getState;
        sz <- match onum with
              | none => pure (mt.sz dl)
-             | (some num) =>
+             | some num =>
                  (do n <- eval_typed num;
                     match n with
-                    | (value.bv _ n') => pure ((mt.sz dl).mul n'.to_nat)
+                    | value.bv _ n' => pure ((mt.sz dl).mul n'.to_nat)
                     | _ => throw (IO.userError "expected integer value in alloca instruction"));
        a <- match oalign with
             | none => pure (mt.alignment dl)
-            | (some align) =>
+            | some align =>
               match toAlignment align with
               | none => throw (IO.userError ("illegal alignment value in alloca: " ++ toString align))
-              | (some a) => pure (maxAlignment (mt.alignment dl) a);
+              | some a => pure (maxAlignment (mt.alignment dl) a);
        ptr <- (do st <- sim.getState;
                   let (p,st') := allocOnStack sz a st;
                   sim.setState st';
                   pure p);
        pure (some (value.bv 64 ptr))
 
+
 | instruction.gep _bounds base offsets =>
      do dl <- state.dl <$> sim.getState;
         tds <- (module.types ∘ state.mod) <$> sim.getState;
         baseType <- eval_mem_type base.type;
         match baseType with
-        | (mem_type.ptr stp) =>
+        | mem_type.ptr stp =>
           match sym_type_to_mem_type dl tds stp with
-          | (some mt) =>
+          | some mt =>
              do base' <- eval baseType base.value;
                 offsets' <- Array.mmap eval_typed offsets;
                 match base' with
@@ -278,6 +278,7 @@ def evalInstr : instruction → sim (Option sim.value)
                 | _ => throw (IO.userError "Expected bitvector in GEP base value")
           | none => throw (IO.userError "Invalid GEP, bad base type")
         | _ => throw (IO.userError "Expected pointer type in GEP base")
+
 
 | _ => throw (IO.userError "NYE: unimplemented instruction")
 
@@ -321,7 +322,7 @@ partial def execBlock {z}
       , kcall := kcall
       , kjump := execBlock
       }
-      (λ_ _ _ => kerr $ IO.userError ("expected block terminatror at the end of block: "
+      (λ _ _ _ => kerr $ IO.userError ("expected block terminatror at the end of block: "
                                     ++ pp.render (pp_label next)))
       { frm with curr := next, prev := some frm.curr }
       st

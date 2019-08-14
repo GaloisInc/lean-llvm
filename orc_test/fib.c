@@ -1,6 +1,4 @@
-#include<stdint.h>
-
-uint64_t add_xyx(uint64_t x, uint64_t y);
+#include "add.h"
 
 uint64_t fib(uint64_t x) {
     if (x < 2) {
