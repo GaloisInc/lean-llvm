@@ -9,8 +9,8 @@ LLVM_HOME?=$(HOME)/build/llvm-8.0.0.src/
 #LLVM_HOME=$(HOME)/opt/llvm-8.0.0
 
 # For now assume lean,leanc are in path
-LEAN := $(shell which lean)
-LEANC := leanc
+LEAN  := $(shell which lean)
+LEANC := $(shell which leanc)
 
 # We assume llvm-config is in path.
 LLVM_CONFIG := llvm-config
@@ -21,12 +21,11 @@ LLVM_LIBS    := $(shell $(LLVM_CONFIG) --libs)
 # Lean paths are computed relative to lean executable.
 LEAN_HOME:=$(abspath $(dir $(LEAN))..)
 LEAN_INCLUDE:=$(LEAN_HOME)/include
-LEAN_LIBRARY:=$(LEAN_HOME)/library
+LEAN_LIBRARY:=$(LEAN_HOME)/lib/lean/library
 
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
 CXX_FLAGS=-O1 -g -fno-rtti
-CLANG=clang++
 
 SOURCES :=\
   alignment.lean\
