@@ -6,8 +6,8 @@ import init.data.rbmap
 import .ast
 import .bv
 import .pp
-import .simMonad
 import .type_context
+import .sim_monad
 import .value
 
 namespace llvm.

@@ -1,12 +1,11 @@
 
-
 import .ast
 import .bv
 import .memory
 import .pp
+import .sim_monad
 import .type_context
 import .value
-import .simMonad
 
 namespace llvm.
 namespace sim.
@@ -235,7 +234,7 @@ def evalInstr : instruction → sim (Option sim.value)
       | value.bv 64 p =>
             do mt <- eval_mem_type val.type;
                v <- eval mt val.value;
-               mem.store st.dl mt p v; -- (bv.from_nat 64 p.to_nat) v;
+               mem.store st.dl mt p v;
                pure none
       | _ => throw (IO.userError "expected pointer value in store" )
 
