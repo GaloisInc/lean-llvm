@@ -1,29 +1,21 @@
 # This builds the lean-llvm.
 #
-# It assumes that lean and leanc are installed and that
+# If LLVM_HOME or LEAN_HOME are not set, try to infer them
+# from the `llvm-config` and `lean` binaries in the path
+LLVM_HOME?=$(shell llvm-config --prefix)
+LEAN_HOME?=$(abspath $(dir $(shell which lean))..)
 
-LEAN_HOME=$(HOME)/code/lean4
-LLVM_HOME?=$(HOME)/build/llvm-8.0.0.src/
-
-#LEAN_HOME=$(HOME)/opt/lean4
-#LLVM_HOME=$(HOME)/opt/llvm-8.0.0
-
-# For now assume lean,leanc are in path
-LEAN  := $(shell which lean)
-LEANC := $(shell which leanc)
-
-# We assume llvm-config is in path.
-LLVM_CONFIG := llvm-config
-LLVM_INCLUDE := $(shell $(LLVM_CONFIG) --includedir)
-LLVM_LIB     := $(shell $(LLVM_CONFIG) --libdir)
-LLVM_LIBS    := $(shell $(LLVM_CONFIG) --libs)
-
-CLANG := $(shell $(LLVM_CONFIG) --prefix)/bin/clang
-
-# Lean paths are computed relative to lean executable.
-LEAN_HOME:=$(abspath $(dir $(LEAN))..)
+LEAN        :=$(LEAN_HOME)/bin/lean
+LEANC       :=$(LEAN_HOME)/bin/leanc
 LEAN_INCLUDE:=$(LEAN_HOME)/include
 LEAN_LIBRARY:=$(LEAN_HOME)/lib/lean/library
+LEAN_PATH   :=$(PWD):$(LEAN_LIBRARY)
+
+LLVM_CONFIG  :=$(LLVM_HOME)/bin/llvm-config
+CLANG        :=$(LLVM_HOME)/bin/clang
+LLVM_INCLUDE :=$(shell $(LLVM_CONFIG) --includedir)
+LLVM_LIB     :=$(shell $(LLVM_CONFIG) --libdir)
+LLVM_LIBS    :=$(shell $(LLVM_CONFIG) --libs)
 
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
@@ -44,8 +36,6 @@ SOURCES :=\
   parser.lean\
   type_context.lean\
   value.lean
-
-LEAN_PATH:=$(PWD):$(LEAN_LIBRARY)
 
 OLEAN=$(SOURCES:.lean=.olean)
 CPP=$(patsubst %.lean,build/%.cpp,$(SOURCES))
