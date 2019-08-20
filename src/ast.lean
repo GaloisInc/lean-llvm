@@ -126,10 +126,10 @@ inductive llvm_type
   | prim_type : prim_type -> llvm_type
   | alias : String -> llvm_type
   | array : Nat -> llvm_type -> llvm_type
-  | fun_ty : llvm_type -> List llvm_type -> Bool -> llvm_type
+  | fun_ty : llvm_type -> Array llvm_type -> Bool -> llvm_type
   | ptr_to : llvm_type -> llvm_type
-  | struct : List llvm_type -> llvm_type
-  | packed_struct : List llvm_type -> llvm_type
+  | struct : Array llvm_type -> llvm_type
+  | packed_struct : Array llvm_type -> llvm_type
   | vector : Nat -> llvm_type -> llvm_type
   | opaque : llvm_type
 

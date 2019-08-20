@@ -126,7 +126,7 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
 | t@(llvm_type.fun_ty ret args va) =>
      let mt : Option fun_decl := (do
           lift_mem_type ret >>= λret' =>
-            List.mmap lift_mem_type args >>= λargs' =>
+            List.mmap lift_mem_type args.toList >>= λargs' =>
             pure (fun_decl.fun_decl ret' args' va));
      Option.casesOn mt (sym_type.unsupported t) sym_type.fun_type
 
@@ -145,11 +145,11 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
 | llvm_type.opaque => sym_type.opaque
 
 | t@(llvm_type.struct fs) =>
-     let mt : Option (List mem_type) := List.mmap lift_mem_type fs;
+     let mt : Option (List mem_type) := List.mmap lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
 
 | t@(llvm_type.packed_struct fs) =>
-     let mt : Option (List mem_type) := List.mmap lift_mem_type fs;
+     let mt : Option (List mem_type) := List.mmap lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.packed_struct ∘ compute_packed_struct_info dl)
 .
 
@@ -164,8 +164,8 @@ partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type →
   | prim_type.x86mmx         => none
 | llvm_type.ptr_to tp        => some (mem_type.ptr (lift_sym_type dl lift_mem_type tds tp))
 | llvm_type.alias i          => lookup_td tds i >>= lift_mem_type
-| llvm_type.struct fs        => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mmap lift_mem_type fs)
-| llvm_type.packed_struct fs => (mem_type.packed_struct ∘ compute_packed_struct_info dl) <$> (List.mmap lift_mem_type fs)
+| llvm_type.struct fs        => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
+| llvm_type.packed_struct fs => (mem_type.packed_struct ∘ compute_packed_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
 | llvm_type.array n tp       => mem_type.array n <$> lift_mem_type tp
 | llvm_type.vector n tp      => mem_type.vector n <$> lift_mem_type tp
 | llvm_type.fun_ty _ _ _     => none

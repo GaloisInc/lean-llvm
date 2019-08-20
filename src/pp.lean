@@ -187,9 +187,9 @@ partial def pp_type : llvm_type → doc
 | (llvm_type.alias nm)           => text "%" <> text nm
 | (llvm_type.array len ty)       => brackets (int len <+> text "x" <+> pp_type ty)
 | (llvm_type.ptr_to ty)          => pp_type ty <> text "*"
-| (llvm_type.struct ts)          => braces (commas (List.map pp_type ts))
-| (llvm_type.packed_struct ts)   => packed_braces (commas (List.map pp_type ts))
-| (llvm_type.fun_ty ret args va) => pp_type ret <> pp_arg_list va (List.map pp_type args)
+| (llvm_type.struct ts)          => braces (commas (List.map pp_type ts.toList))
+| (llvm_type.packed_struct ts)   => packed_braces (commas (List.map pp_type ts.toList))
+| (llvm_type.fun_ty ret args va) => pp_type ret <> pp_arg_list va (List.map pp_type args.toList)
 | (llvm_type.vector len ty)      => angles (int len <+> text "x" <+> pp_type ty)
 | (llvm_type.opaque)             => text "opaque"
 .

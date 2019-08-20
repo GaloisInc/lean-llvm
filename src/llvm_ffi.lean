@@ -6,6 +6,8 @@ Authors: Robert Dockins, Joe Hendrix
 Lean declarations to link against LLVM C++ declarations.
 -/
 
+import .llvm_codes
+
 
 /- A LLVM context.
    TODO: mark opaque -/
@@ -82,13 +84,22 @@ def getModuleDataLayoutStr : @& Module → IO String := default _
 def getFunctionArray : @& Module -> IO (Array LLVMFunction) := default _
 
 @[extern 2 cpp "lean_llvm::getTypeTag"]
-def getTypeTag : @& LLVMType -> IO Nat := default _
+def getTypeTag : @& LLVMType -> IO llvm.code.type := default _
 
 @[extern 2 cpp "lean_llvm::getIntegerTypeWidth"]
 def getIntegerTypeWidth : @& LLVMType -> IO Nat := default _
 
 @[extern 2 cpp "lean_llvm::getPointerElementType"]
 def getPointerElementType : @& LLVMType -> IO (Option LLVMType) := default _
+
+@[extern 2 cpp "lean_llvm::getSequentialTypeData"]
+def getSequentialTypeData : @&LLVMType -> IO (Option (Nat × LLVMType)) := default _
+
+@[extern 2 cpp "lean_llvm::getStructTypeData"]
+def getStructTypeData : @&LLVMType -> IO (Option (Bool × Array LLVMType)) := default _
+
+@[extern 2 cpp "lean_llvm::getFunctionTypeData"]
+def getFunctionTypeData : @&LLVMType -> IO (Option (LLVMType × (Array LLVMType × Bool))) := default _
 
 @[extern 2 cpp "lean_llvm::getInstructionArray"]
 def getInstructionArray : @& BasicBlock -> IO (Array Instruction) := default _
@@ -109,7 +120,7 @@ def getConstantName : @& LLVMConstant -> IO (Option String) := default _
 def getInstructionType : @& Instruction -> IO LLVMType := default _
 
 @[extern 2 cpp "lean_llvm::getInstructionOpcode"]
-def getInstructionOpcode : @& Instruction -> IO Nat := default _
+def getInstructionOpcode : @& Instruction -> IO llvm.code.instr := default _
 
 @[extern 2 cpp "lean_llvm::getInstructionReturnValue"]
 def getInstructionReturnValue : @& Instruction -> IO (Option LLVMValue) := default _
@@ -129,17 +140,21 @@ def hasNoUnsignedWrap : @& Instruction -> IO Bool := default _
 @[extern 2 cpp "lean_llvm::isExact"]
 def isExact : @&Instruction -> IO Bool := default _
 
+@[extern 2 cpp "lean_llvm::getConstantTag"]
+def getConstantTag : @&LLVMConstant -> IO llvm.code.const := default _
+
 inductive value_decomposition
 | unknown_value  : value_decomposition
-| argument_value : Nat -> value_decomposition
-| instruction_value : Instruction -> value_decomposition
 | constant_value : LLVMConstant -> value_decomposition
+| argument_value : Nat -> value_decomposition
+| block_value : BasicBlock -> value_decomposition
+| instruction_value : Instruction -> value_decomposition
 
 @[extern 2 cpp "lean_llvm::decomposeValue"]
 def decomposeValue : @& LLVMValue -> IO value_decomposition := default _
 
-@[extern 2 cpp "lean_llvm::getCmpInstData"]
-def getCmpInstData : @& Instruction -> IO (Option (Nat × (LLVMValue × LLVMValue))) := default _
+@[extern 2 cpp "lean_llvm::getICmpInstData"]
+def getICmpInstData : @& Instruction -> IO (Option (llvm.code.icmp × (LLVMValue × LLVMValue))) := default _
 
 @[extern 2 cpp "lean_llvm::getSelectInstData"]
 def getSelectInstData : @& Instruction -> IO (Option (LLVMValue × (LLVMValue × LLVMValue))) := default _

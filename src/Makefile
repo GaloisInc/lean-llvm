@@ -18,6 +18,8 @@ LLVM_INCLUDE := $(shell $(LLVM_CONFIG) --includedir)
 LLVM_LIB     := $(shell $(LLVM_CONFIG) --libdir)
 LLVM_LIBS    := $(shell $(LLVM_CONFIG) --libs)
 
+CLANG := $(shell $(LLVM_CONFIG) --prefix)/bin/clang
+
 # Lean paths are computed relative to lean executable.
 LEAN_HOME:=$(abspath $(dir $(LEAN))..)
 LEAN_INCLUDE:=$(LEAN_HOME)/include
@@ -33,6 +35,7 @@ SOURCES :=\
   bv.lean\
   pp.lean\
   data_layout.lean\
+  llvm_codes.lean\
   llvm_ffi.lean \
   llvm_lib.lean\
   memory.lean\
@@ -65,7 +68,7 @@ tests/test_add.cpp : tests/test_add.lean
 driver : $(OBJ) $(OLEAN) build/driver.o build/llvm_exports.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) -lz -ltermcap $(OBJ) build/driver.o build/llvm_exports.o
 
-orc_test : build/orc_test.o build/llvm_ffi.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o
+orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_codes.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $^
 
 build/%.o : build/%.cpp
@@ -84,10 +87,14 @@ build/%.cpp: %.lean %.olean
 build/llvm_exports.o : llvm_exports.h
 build/jit_exports.o : llvm_exports.h
 
+llvm_codes.lean : llvm_codes.lean.in
+	$(CLANG) -E -P -I$(LLVM_INCLUDE) -o $@ -x c $<
+
 data_layout.olean : ast.olean parser.olean alignment.olean
 driver.olean : ast.olean bv.olean pp.olean llvm_lib.olean simulate.olean
 orc_test.olean : clang_ffi.olean llvm_ffi.olean
 clang_ffi.olean : llvm_ffi.olean
+llvm_ffi.olean : llvm_codes.olean
 llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean llvm_ffi.olean
 memory.olean : ast.olean bv.olean pp.olean sim_monad.olean type_context.olean value.olean
 sim_monad.olean : ast.olean bv.olean pp.olean type_context.olean value.olean
@@ -97,6 +104,7 @@ type_context.olean : alignment.olean ast.olean data_layout.olean
 value.olean : ast.olean bv.olean type_context.olean 
 
 clean:
+	- rm llvm_codes.lean
 	- rm -rf build llvm_exports.o
 	- rm -f *.olean
 	- rm -f tests/test_add.o

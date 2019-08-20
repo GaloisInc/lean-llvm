@@ -11,6 +11,7 @@ from Lean.
 #include <llvm/ADT/Triple.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/IR/Instructions.h>
+
 #include <llvm/Support/TargetSelect.h>
 
 #include <runtime/apply.h>
@@ -37,6 +38,7 @@ inline obj_res mk_pair(obj_arg x, obj_arg y) {
     cnstr_set(r, 1, y);
     return r;
 }
+
 
 ////////////////////////////////////////////////////////////////////////
 // StringRef
@@ -226,6 +228,64 @@ obj_res getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(elt_tp_obj));
 }
 
+obj_res getSequentialTypeData( b_obj_arg tp_obj, obj_arg r) {
+  auto tp = toType(tp_obj);
+  auto seq = llvm::dyn_cast<llvm::SequentialType>(tp);
+  if(!seq) {
+    return set_io_result(r, mk_option_none());
+  }
+
+  auto num = seq->getNumElements();
+  auto elt_tp = seq->getElementType();
+  obj_res x = mk_pair( mk_nat_obj(num), allocTypeObj( elt_tp ) );
+
+  return set_io_result(r, mk_option_some( x ));
+}
+
+obj_res getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
+  auto tp = toType(tp_obj);
+  auto st = llvm::dyn_cast<llvm::StructType>(tp);
+
+  if(!st) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  unsigned int packed = st->isPacked();
+
+  unsigned int n = st->getNumElements();
+  obj_res arr = alloc_array(n, n);
+  auto p = array_cptr(arr);
+  for(unsigned i = 0; i<n; i++) {
+    auto v = st->getElementType(i);
+    *(p++) = allocTypeObj(v);
+  }
+
+  obj_res x = mk_pair( box(packed), arr );
+  return set_io_result( r, mk_option_some(x) );
+}
+
+obj_res getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
+  auto tp = toType(tp_obj);
+  auto fn = llvm::dyn_cast<llvm::FunctionType>(tp);
+
+  if(!fn) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  unsigned int varargs = fn->isVarArg();
+  auto ret = fn->getReturnType();
+  auto n = fn->getNumParams();
+  auto arr = alloc_array(n, n);
+  auto p = array_cptr(arr);
+  for(unsigned i = 0; i<n; i++) {
+    auto v = fn->getParamType(i);
+    *(p++) = allocTypeObj(v);
+  }
+
+  obj_res x = mk_pair( allocTypeObj(ret), mk_pair( arr, box(varargs) ));
+  return set_io_result( r, mk_option_some( x ));
+}
+
 
 ////////////////////////////////////////////////////////////////////////
 // Values
@@ -291,35 +351,55 @@ obj_res getValueType(b_obj_arg v_obj, obj_arg r) {
 
 obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
     auto v = toValue(v_obj);
-    auto parent = valueParent(v_obj);
 
     obj_res x;
-    if (auto a = llvm::dyn_cast<llvm::Argument>(v)) {
+    if (auto c = llvm::dyn_cast<llvm::Constant>(v)) {
 
-	x = alloc_cnstr(1, 0, 0);
-	cnstr_set(x, 0, box(a->getArgNo()));
+        // constant_value : llvm.code.const -> LLVMConstant -> value_decomposition
+        inc_ref( v_obj );
+	x = alloc_cnstr(1, 1, 0);
+	cnstr_set(x, 0, v_obj);
+
+    } else if (auto a = llvm::dyn_cast<llvm::Argument>(v)) {
+
+        // argument_value : Nat -> value_decomposition
+	x = alloc_cnstr(2, 1, 0);
+	cnstr_set_scalar(x, 0, box(a->getArgNo()));
+
+    } else if (auto b = llvm::dyn_cast<llvm::BasicBlock>(v)) {
+
+        // block_value : BasicBlock -> value_decomposition
+        inc_ref( v_obj );
+	x = alloc_cnstr(3, 1, 0);
+	cnstr_set(x, 0, v_obj);
 
     } else if (auto i = llvm::dyn_cast<llvm::Instruction>(v)) {
 
+	// instruction_value : llvm.code.instr -> Instruction -> value_decomposition
         inc_ref( v_obj );
-	x = alloc_cnstr(2, 0, 0);
-	cnstr_set(x, 0, v_obj);
-
-    } else if (auto c = llvm::dyn_cast<llvm::Constant>(v)) {
-
-        inc_ref( v_obj );
-	x = alloc_cnstr(3, 0, 0);
+	x = alloc_cnstr(4, 1, 0);
 	cnstr_set(x, 0, v_obj);
 
     } else {
+        // unknown_value  : value_decomposition
 	x = alloc_cnstr(0,0,0);
     }
 
     return set_io_result(r, x);
 }
 
-obj_res getConstantName(b_obj_arg i_obj, obj_arg r) {
-    auto v = toValue(i_obj);
+obj_res getConstantTag( b_obj_arg c_obj, obj_arg r ) {
+  auto v = toValue(c_obj);
+  if( auto c = llvm::dyn_cast<llvm::Constant>(v) ) {
+    unsigned int id = v->getValueID();
+    return set_io_result( r, box(id) );
+  } else {
+    return set_io_error( r, "expected llvm::Constant value in 'getConstantTag'" );
+  }
+}
+
+obj_res getConstantName(b_obj_arg c_obj, obj_arg r) {
+    auto v = toValue(c_obj);
     return set_io_result(r, getOptionalNameObj(v->getValueName()));
 }
 
@@ -344,7 +424,7 @@ obj_res getInstructionType(b_obj_arg i_obj, obj_arg r) {
 obj_res getInstructionOpcode(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     unsigned int opcode = i->getOpcode();
-    return set_io_result(r, box(opcode));
+    return set_io_result(r, box( opcode ) );
 }
 
 obj_res getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
@@ -378,7 +458,7 @@ obj_res getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(pair));
 }
 
-obj_res getCmpInstData(b_obj_arg i_obj, obj_arg r) {
+obj_res getICmpInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto ci = llvm::dyn_cast<llvm::CmpInst>(i);
@@ -387,11 +467,19 @@ obj_res getCmpInstData(b_obj_arg i_obj, obj_arg r) {
 	return set_io_result(r, mk_option_none());
     }
 
-    unsigned int cmpOp = static_cast<unsigned int>(ci->getPredicate());
+    llvm::CmpInst::Predicate pred = ci->getPredicate();
+    if(! (llvm::CmpInst::FIRST_ICMP_PREDICATE <= pred && pred <= llvm::CmpInst::LAST_ICMP_PREDICATE) ) {
+      return set_io_result( r, mk_option_none() );
+    }
+
+    unsigned int icmpOp =
+      static_cast<unsigned int>( pred ) -
+      static_cast<unsigned int>( llvm::CmpInst::FIRST_ICMP_PREDICATE );
+
     obj_res v1_obj = allocValueObj(parent, ci->getOperand(0));
     obj_res v2_obj = allocValueObj(parent, ci->getOperand(1));
 
-    obj_res tuple = mk_pair(box(cmpOp), mk_pair(v1_obj, v2_obj));
+    obj_res tuple = mk_pair(box(icmpOp), mk_pair(v1_obj, v2_obj));
 
     return set_io_result(r, mk_option_some(tuple));
 }

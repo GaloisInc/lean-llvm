@@ -1,0 +1,152 @@
+namespace llvm.
+namespace code.
+
+-- C.F. <llvm/IR/Type.h>, Type::TypeID
+inductive type : Type
+| void
+| half
+| float
+| double
+| x86_fp80
+| fp128
+| ppc_fp128
+| label
+| metadata
+| x86_mmx
+| token
+| integer
+| function
+| struct
+| array
+| pointer
+| vector
+.
+
+namespace type.
+def asString : type -> String
+| void       => "void"
+| half       => "half"
+| float      => "float"
+| double     => "double"
+| x86_fp80   => "x86_fp80"
+| fp128      => "fp128"
+| ppc_fp128  => "ppc_fp128"
+| label      => "label"
+| metadata   => "metadata"
+| x86_mmx    => "x86_mmx"
+| token      => "token"
+| integer    => "integer"
+| function   => "function"
+| struct     => "struct"
+| array      => "array"
+| pointer    => "pointer"
+| vector     => "vector"
+.
+
+end type.
+
+
+
+inductive instr : Type
+| Unused -- Burn constructor number 0, which is not used for any instruction value
+#define HANDLE_INST( num, opcode, Class) | opcode
+#include <llvm/IR/Instruction.def>
+.
+
+namespace instr.
+def asString : instr -> String
+| Unused => "Unused"
+#define HANDLE_INST( num, opcode, Class) | opcode => #opcode
+#include <llvm/IR/Instruction.def>
+.
+end instr.
+
+
+inductive const : Type
+#define HANDLE_CONSTANT( nm ) | nm
+#include <llvm/IR/Value.def>
+.
+
+namespace const.
+def asString : const -> String
+#define HANDLE_CONSTANT( nm ) | nm => #nm
+#include <llvm/IR/Value.def>
+.
+end const.
+
+
+-- C.F. llvm/IR/InstrTypes.h, enum Predicate
+inductive fcmp
+| false
+| oeq
+| ogt
+| oge
+| olt
+| ole
+| one
+| ord
+| uno
+| ueq
+| ugt
+| uge
+| ult
+| ule
+| une
+| true
+.
+
+namespace fcmp
+def asString : fcmp -> String
+| false => "false"
+| oeq   => "oeq"
+| ogt   => "ogt"
+| oge   => "oge"
+| olt   => "olt"
+| ole   => "ole"
+| one   => "one"
+| ord   => "ord"
+| uno   => "uno"
+| ueq   => "ueq"
+| ugt   => "ugt"
+| uge   => "uge"
+| ult   => "ult"
+| ule   => "ule"
+| une   => "une"
+| true  => "true"
+.
+end fcmp
+
+
+-- C.F. llvm/IR/InstrTypes.h, enum Predicate
+inductive icmp
+| eq
+| ne
+| ugt
+| uge
+| ult
+| ule
+| sgt
+| sge
+| slt
+| sle
+.
+
+namespace icmp.
+def asString : icmp -> String
+| eq   => "eq"
+| ne   => "ne"
+| ugt  => "ugt"
+| uge  => "uge"
+| ult  => "ult"
+| ule  => "ule"
+| sgt  => "sgt"
+| sge  => "sge"
+| slt  => "slt"
+| sle  => "sle"
+.
+
+end icmp.
+
+
+end code.
+end llvm.
