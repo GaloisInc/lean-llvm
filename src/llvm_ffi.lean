@@ -71,11 +71,17 @@ constant Module := Unit
 @[extern 3 cpp "lean_llvm::parseBitcodeFile"]
 def parseBitcodeFile : @&MemoryBuffer → LLVMContext → IO Module := default _
 
+@[extern 3 cpp "lean_llvm::newModule"]
+def newModule : LLVMContext → @&String → IO Module := default _
+
+@[extern 2 cpp "lean_llvm::printModule"]
+def printModule : @& Module -> IO Unit := default _
+
 @[extern 2 cpp "lean_llvm::getModuleIdentifier"]
 def getModuleIdentifier : @&Module → IO String := default _
 
 @[extern 3 cpp "lean_llvm::setModuleIdentifier"]
-def setModuleIdentifier : @&Module → String → IO Unit := default _
+def setModuleIdentifier : @&Module → @&String → IO Unit := default _
 
 @[extern 2 cpp "lean_llvm::getModuleDataLayoutStr"]
 def getModuleDataLayoutStr : @& Module → IO String := default _

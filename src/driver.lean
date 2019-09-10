@@ -42,3 +42,12 @@ def readmain (xs : List String) : IO UInt32 := do
        do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString);
           pure 0
   | _ => pure 0
+
+def buildmain (xs : List String) : IO UInt32 := do
+  ctx <- newLLVMContext;
+  mod <- newModule ctx "testmodule.bc";
+  printModule mod;
+  pure 0
+
+def main := buildmain
+--def main := readmain

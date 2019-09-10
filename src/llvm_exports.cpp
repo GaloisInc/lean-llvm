@@ -11,7 +11,7 @@ from Lean.
 #include <llvm/ADT/Triple.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/IR/Instructions.h>
-
+#include <llvm/Support/raw_os_ostream.h>
 #include <llvm/Support/TargetSelect.h>
 
 #include <runtime/apply.h>
@@ -57,6 +57,13 @@ object * mk_string(const llvm::StringRef& s) {
     w_string_cstr(r)[sz] = 0;
     return r;
 }
+
+const llvm::StringRef asStringRef( object* o ) {
+  lean_assert(is_string(o));
+  size_t sz_with_null = string_size(o);
+  return llvm::StringRef( w_string_cstr(o), sz_with_null - 1 );
+}
+
 
 ////////////////////////////////////////////////////////////////////////
 // Generic class functions
@@ -410,7 +417,11 @@ obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
 
     } else {
         // unknown_value  : value_decomposition
-	x = alloc_cnstr(0,0,0);
+
+      llvm::raw_os_ostream ros(std::cout);
+      ros << "Unknown value! " << v->getValueID() << "\n";
+      v->print( ros );
+      x= alloc_cnstr(0,0,0);
     }
 
     return set_io_result(r, x);
@@ -875,6 +886,26 @@ obj_res parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
 
     return set_io_result(r, allocModuleObj(ctxObj, std::move(*moduleOrErr)));
 }
+
+obj_res newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
+  auto ctx = toLLVMContext(ctxObj);
+  auto nm  = asStringRef( nmObj );
+
+  auto mod = new llvm::Module( nm, *ctx );
+  auto modObj = allocModuleObj( ctxObj, std::unique_ptr<llvm::Module>(mod) );
+
+  return set_io_result( r, modObj );
+}
+
+obj_res printModule( obj_arg modObj, obj_arg r ) {
+  auto mod = toModule(modObj);
+
+  llvm::raw_os_ostream ros(std::cout);
+  mod->print( ros, nullptr );
+
+  return set_io_result( r, box(0) );
+}
+
 
 obj_res initNativeFns(obj_arg r) {
     LLVM_NATIVE_TARGETINFO();

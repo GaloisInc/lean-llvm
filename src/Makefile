@@ -30,6 +30,7 @@ SOURCES :=\
   llvm_codes.lean\
   llvm_ffi.lean \
   llvm_lib.lean\
+  llvm_output.lean\
   memory.lean\
   sim_monad.lean\
   simulate.lean\
@@ -86,6 +87,7 @@ orc_test.olean : clang_ffi.olean llvm_ffi.olean
 clang_ffi.olean : llvm_ffi.olean
 llvm_ffi.olean : llvm_codes.olean
 llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean llvm_ffi.olean
+llvm_output.olean : ast.olean pp.olean data_layout.olean llvm_ffi.olean
 memory.olean : ast.olean bv.olean pp.olean sim_monad.olean type_context.olean value.olean
 sim_monad.olean : ast.olean bv.olean pp.olean type_context.olean value.olean
 pp.olean : ast.olean
