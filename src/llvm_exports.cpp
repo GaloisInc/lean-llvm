@@ -209,6 +209,34 @@ obj_res getTypeTag(b_obj_arg tp_obj, obj_arg r) {
     return set_io_result(r, n);
 }
 
+obj_res getTypeName( b_obj_arg tp_obj, obj_arg r ) {
+  auto tp = toType(tp_obj);
+  auto structtp = llvm::dyn_cast<llvm::StructType>( tp );
+
+  if( !structtp ) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  auto nm = structtp->getName();
+  if( nm.empty() ) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  obj_res str = mk_string( nm );
+  return set_io_result( r, mk_option_some( str ) );
+}
+
+obj_res typeIsOpaque( b_obj_arg tp_obj, obj_arg r) {
+  auto tp = toType(tp_obj);
+  if( auto stp = llvm::dyn_cast<llvm::StructType>(tp) ) {
+    unsigned int opaque = stp->isOpaque();
+    return set_io_result( r, box(opaque) );
+  }
+
+  return set_io_result( r, box(0) );
+}
+
+
 obj_res getIntegerTypeWidth(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     unsigned int w = tp->getIntegerBitWidth();

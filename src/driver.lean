@@ -11,10 +11,10 @@ import .simulate
 
 open llvm.
 
-def main (xs : List String) : IO UInt32 := do
+def readmain (xs : List String) : IO UInt32 := do
   ctx ← newLLVMContext;
   mb ← newMemoryBufferFromFile xs.head;
-  m ← parseBitcodeFile mb ctx >>= extractModule;
+  m ← parseBitcodeFile mb ctx >>= loadModule;
   dl <- match computeDataLayout m.data_layout with
         | (Except.error msg) => throw (IO.userError msg)
         | (Except.ok dl) => pure dl;

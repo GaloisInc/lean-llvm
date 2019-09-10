@@ -36,7 +36,6 @@ with mem_type : Type
   | array    : Nat → mem_type → mem_type
   | vector   : Nat → mem_type → mem_type
   | struct   : structInfo mem_type → mem_type
-  | packed_struct : structInfo mem_type → mem_type
   | metadata : mem_type
 
 --  | float    :
@@ -60,7 +59,6 @@ partial def szAndAlign (dl:data_layout) : mem_type → (bytes × alignment)
      let vsz := sz.mul n;
      (vsz, computeVectorAlignment dl.vector_info vsz.toBits)
 | (struct si)        => (si.size, si.alignment)
-| (packed_struct si) => (si.size, si.alignment)
 | metadata           => (bytes.mk 0, noAlignment)
 .
 
@@ -104,10 +102,10 @@ def compute_packed_struct_info (dl:data_layout) : List mem_type → structInfo m
 instance sym_type.inh : Inhabited sym_type := ⟨sym_type.void⟩
 instance mem_type.inh : Inhabited mem_type := ⟨mem_type.ptr sym_type.void⟩
 
-def lookup_td (tds:Array type_decl) (i:String) : Option llvm_type :=
+def lookup_td (tds:Array type_decl) (i:String) : Option type_decl_body :=
   Array.find tds (λtd =>
    match decEq td.name i with
-   | Decidable.isTrue _  => some td.value
+   | Decidable.isTrue _  => some td.decl
    | Decidable.isFalse _ => none
    ).
 
@@ -115,6 +113,7 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
 | t@(llvm_type.prim_type pt) =>
      (match pt with
      | prim_type.label     => sym_type.unsupported t
+     | prim_type.token     => sym_type.unsupported t
      | prim_type.void      => sym_type.void
      | prim_type.integer n => sym_type.mem_type (mem_type.int n)
      | prim_type.metadata  => sym_type.mem_type mem_type.metadata
@@ -142,15 +141,13 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
      | none   => sym_type.unsupported t
      | some m => sym_type.mem_type (mem_type.vector n m))
 
-| llvm_type.opaque => sym_type.opaque
-
-| t@(llvm_type.struct fs) =>
+| t@(llvm_type.struct false fs) =>
      let mt : Option (List mem_type) := List.mmap lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
 
-| t@(llvm_type.packed_struct fs) =>
+| t@(llvm_type.struct true fs) =>
      let mt : Option (List mem_type) := List.mmap lift_mem_type fs.toList;
-     Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.packed_struct ∘ compute_packed_struct_info dl)
+     Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_packed_struct_info dl)
 .
 
 partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type → Option mem_type
@@ -159,23 +156,31 @@ partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type →
   | prim_type.integer n      => some (mem_type.int n)
   | prim_type.metadata       => some mem_type.metadata
   | prim_type.label          => none
+  | prim_type.token          => none
   | prim_type.void           => none
   | prim_type.float_type _   => none
   | prim_type.x86mmx         => none
 | llvm_type.ptr_to tp        => some (mem_type.ptr (lift_sym_type dl lift_mem_type tds tp))
-| llvm_type.alias i          => lookup_td tds i >>= lift_mem_type
-| llvm_type.struct fs        => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
-| llvm_type.packed_struct fs => (mem_type.packed_struct ∘ compute_packed_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
+| llvm_type.alias i          =>
+     do b <- lookup_td tds i;
+        match b with
+        | type_decl_body.opaque   => none
+        | type_decl_body.defn tp' => lift_mem_type tp'
+| llvm_type.struct false fs  => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
+| llvm_type.struct true fs   => (mem_type.struct ∘ compute_packed_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
 | llvm_type.array n tp       => mem_type.array n <$> lift_mem_type tp
 | llvm_type.vector n tp      => mem_type.vector n <$> lift_mem_type tp
 | llvm_type.fun_ty _ _ _     => none
-| llvm_type.opaque           => none
 .
 
 def sym_type_to_mem_type (dl:data_layout) (tds:Array type_decl) : sym_type -> Option mem_type
 | sym_type.mem_type mt => some mt
-| sym_type.ty_alias i  => lookup_td tds i >>= (lift_mem_type dl tds)
-| _                    => none
+| sym_type.ty_alias i  =>
+   do b <- lookup_td tds i;
+      match b with
+      | type_decl_body.opaque => none
+      | type_decl_body.defn tp => lift_mem_type dl tds tp
+| _ => none
 
 
 end llvm.

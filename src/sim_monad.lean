@@ -21,7 +21,7 @@ structure frame :=
 instance frameInh : Inhabited frame := Inhabited.mk
   { locals := RBMap.empty
   , func   := llvm.define.mk none (llvm_type.prim_type prim_type.void) (symbol.mk "") Array.empty false Array.empty none none Array.empty (strmap_empty _) none
-  , curr   := block_label.named ""
+  , curr   := block_label.mk (ident.named "")
   , prev   := none
   , framePtr := bytes.mk 0
   }.

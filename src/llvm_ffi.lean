@@ -86,6 +86,12 @@ def getFunctionArray : @& Module -> IO (Array LLVMFunction) := default _
 @[extern 2 cpp "lean_llvm::getTypeTag"]
 def getTypeTag : @& LLVMType -> IO llvm.code.type := default _
 
+@[extern 2 cpp "lean_llvm::getTypeName"]
+def getTypeName : @& LLVMType -> IO (Option String) := default _
+
+@[extern 2 cpp "lean_llvm::typeIsOpaque"]
+def typeIsOpaque : @& LLVMType -> IO Bool := default _
+
 @[extern 2 cpp "lean_llvm::getIntegerTypeWidth"]
 def getIntegerTypeWidth : @& LLVMType -> IO Nat := default _
 

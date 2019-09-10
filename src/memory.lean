@@ -87,12 +87,6 @@ partial def store (dl:data_layout) : mem_type → bv 64 → sim.value → sim Un
      | some fv => store f.value (p.add (bv.from_nat 64 f.offset.val)) fv.value
      | none    => throw (IO.userError "Struct type mismatch in store!"))
 
-| mem_type.packed_struct si, p, sim.value.struct fs =>
-   si.fields.miterate () (λidx f _ =>
-     match fs.getOpt idx.val with
-     | some fv => store f.value (p.add (bv.from_nat 64 f.offset.val)) fv.value
-     | none    => throw (IO.userError "Struct type mismatch in store!"))
-
 | mem_type.vector n _, p, value.vec mt vs =>
     let (sz,a) := mem_type.szAndAlign dl mt;
     let sz' := bv.from_nat 64 (padToAlignment sz a).val;

@@ -137,8 +137,8 @@ end layout_spec.
 def pp_string_literal : String → doc := dquotes ∘ text
 
 def pp_ident : ident → doc
-| (ident.named nm) => text "%" <> text nm  -- FIXME! deal with the 'validIdentifier' question
-| (ident.anon i)   => text "%" <> to_doc i
+| ident.named nm => text "%" <> text nm  -- FIXME! deal with the 'validIdentifier' question
+| ident.anon i   => text "%" <> to_doc i
 .
 
 def pp_symbol (n:symbol) : doc :=
@@ -146,8 +146,7 @@ def pp_symbol (n:symbol) : doc :=
 .
 
 def pp_label : block_label → doc
-| (block_label.named nm) => text "%" <> text nm
-| (block_label.anon i)  => text "%" <> to_doc i
+| block_label.mk i => pp_ident i
 .
 
 def packed_braces : doc → doc := surrounding "<{" "}>"
@@ -163,6 +162,7 @@ def pp_float_type : float_type → doc
 
 def pp_prim_type : prim_type → doc
 | prim_type.label          => text "label"
+| prim_type.token          => text "token"
 | prim_type.void           => text "void"
 | prim_type.x86mmx         => text "x86mmx"
 | prim_type.metadata       => text "metadata"
@@ -187,11 +187,10 @@ partial def pp_type : llvm_type → doc
 | (llvm_type.alias nm)           => text "%" <> text nm
 | (llvm_type.array len ty)       => brackets (int len <+> text "x" <+> pp_type ty)
 | (llvm_type.ptr_to ty)          => pp_type ty <> text "*"
-| (llvm_type.struct ts)          => braces (commas (List.map pp_type ts.toList))
-| (llvm_type.packed_struct ts)   => packed_braces (commas (List.map pp_type ts.toList))
+| (llvm_type.struct false ts)    => braces (commas (List.map pp_type ts.toList))
+| (llvm_type.struct true  ts)    => packed_braces (commas (List.map pp_type ts.toList))
 | (llvm_type.fun_ty ret args va) => pp_type ret <> pp_arg_list va (List.map pp_type args.toList)
 | (llvm_type.vector len ty)      => angles (int len <+> text "x" <+> pp_type ty)
-| (llvm_type.opaque)             => text "opaque"
 .
 
 
@@ -646,8 +645,13 @@ def pp_global_alias (ga:global_alias) : doc :=
   pp_value ga.target
 .
 
+def pp_type_decl_body : type_decl_body -> doc
+| type_decl_body.opaque  => text "opaque"
+| type_decl_body.defn tp => pp_type tp
+.
+
 def pp_type_decl (t:type_decl) : doc :=
-  text "%" <> text t.name <+> text "= type" <+> pp_type t.value
+  text "%" <> text t.name <+> text "= type" <+> pp_type_decl_body t.decl
 .
 
 def pp_gc (x:GC) : doc := pp_string_literal x.gc

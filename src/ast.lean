@@ -116,6 +116,7 @@ inductive float_type
 
 inductive prim_type
   | label
+  | token
   | void
   | integer : Nat -> prim_type
   | float_type : float_type -> prim_type
@@ -128,25 +129,25 @@ inductive llvm_type
   | array : Nat -> llvm_type -> llvm_type
   | fun_ty : llvm_type -> Array llvm_type -> Bool -> llvm_type
   | ptr_to : llvm_type -> llvm_type
-  | struct : Array llvm_type -> llvm_type
-  | packed_struct : Array llvm_type -> llvm_type
+  | struct (packed:Bool) : Array llvm_type -> llvm_type
   | vector : Nat -> llvm_type -> llvm_type
-  | opaque : llvm_type
 
 -- Top-level Type Aliases ------------------------------------------------------
 
+inductive type_decl_body
+  | opaque
+  | defn : llvm_type -> type_decl_body
+
 structure type_decl :=
   (name : String)
-  (value : llvm_type)
+  (decl : type_decl_body)
 
 -- Symbols ---------------------------------------------------------------------
 
 structure symbol := (symbol : String)
 
-inductive block_label
-  | named : String -> block_label
-  | anon : Nat -> block_label
-
+structure block_label :=
+  (label : ident).
 
 @[reducible]
 instance symbolHasLess : HasLess symbol := ⟨ λ(x y:symbol) => x.symbol < y.symbol ⟩.
@@ -157,18 +158,11 @@ instance symbolLtDec (x y:symbol) : Decidable (x < y) := String.decLt x.symbol y
 namespace block_label.
 
 instance decideEq : ∀(x y:block_label), Decidable (x = y)
-| block_label.named a, block_label.named b =>
-    (match decEq a b with
+| block_label.mk a, block_label.mk b =>
+    (match ident.decideEq a b with
      | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
      | Decidable.isFalse p => Decidable.isFalse (fun H => block_label.noConfusion H p)
     )
-| block_label.anon a, block_label.anon b =>
-    (match decEq a b with
-     | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
-     | Decidable.isFalse p => Decidable.isFalse (fun H => block_label.noConfusion H p)
-    )
-| block_label.anon _, block_label.named _ => Decidable.isFalse (fun H => block_label.noConfusion H)
-| block_label.named _, block_label.anon _ => Decidable.isFalse (fun H => block_label.noConfusion H)
 .
 
 end block_label.

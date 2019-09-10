@@ -144,11 +144,6 @@ def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → s
          | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
          | none => throw (IO.userError "invalid struct index value in GEP")
 
-    | mem_type.packed_struct si =>
-         match si.fields.getOpt v.to_nat with
-         | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
-         | none => throw (IO.userError "invalid struct index value in GEP")
-
     | _ => throw (IO.userError "Invalid GEP")
 
 | _, _::_, _ => throw (IO.userError "invalid index value in GEP")
