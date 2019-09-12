@@ -9,10 +9,12 @@ import .llvm_ffi
 ------------------------------------------------------------------------
 -- CompilerSession
 
-@[extern 3 "lean_llvm_invokeClang"]
-def invokeClang : LLVMContext → @&(Array String) → IO Module := default _
+namespace llvm.ffi.
 
 constant CompilerSession := Unit
+
+@[extern 3 "lean_llvm_invokeClang"]
+def invokeClang : Context → @&(Array String) → IO Module := default _
 
 /-- This constructs a compiler session and frees it when done. -/
 @[extern 2 "lean_llvm_newCompilerSession"]
@@ -23,3 +25,5 @@ constant addFromClang : @&CompilerSession → @&(Array String) → IO Unit := de
 
 @[extern 4 "lean_llvm_lookupFn"]
 constant lookupFn : @&CompilerSession → @&String → ∀(t:@&Type), IO t := default _
+
+end llvm.ffi.

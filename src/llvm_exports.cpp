@@ -149,7 +149,7 @@ llvm::LLVMContext* toLLVMContext(b_obj_arg o) {
 extern "C" {
 
 /** Create a new LLVM context object. */
-obj_res lean_llvm_newLLVMContext(obj_arg r) {
+obj_res lean_llvm_newContext(obj_arg r) {
     auto ctx = new llvm::LLVMContext();
     object* ctxObj = alloc_external(getLLVMContextClass(), ctx);
     return set_io_result(r, ctxObj);

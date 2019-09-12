@@ -12,9 +12,9 @@ import .simulate
 open llvm.
 
 def readmain (xs : List String) : IO UInt32 := do
-  ctx ← newLLVMContext;
-  mb ← newMemoryBufferFromFile xs.head;
-  m ← parseBitcodeFile mb ctx >>= loadModule;
+  ctx ← ffi.newContext;
+  mb ← ffi.newMemoryBufferFromFile xs.head;
+  m ← ffi.parseBitcodeFile mb ctx >>= loadModule;
   dl <- match computeDataLayout m.data_layout with
         | (Except.error msg) => throw (IO.userError msg)
         | (Except.ok dl) => pure dl;
@@ -44,9 +44,9 @@ def readmain (xs : List String) : IO UInt32 := do
   | _ => pure 0
 
 def buildmain (xs : List String) : IO UInt32 := do
-  ctx <- newLLVMContext;
-  mod <- newModule ctx "testmodule.bc";
-  printModule mod;
+  ctx <- ffi.newContext;
+  mod <- ffi.newModule ctx "testmodule.bc";
+  ffi.printModule mod;
   pure 0
 
 --def main := buildmain
