@@ -49,5 +49,5 @@ def buildmain (xs : List String) : IO UInt32 := do
   printModule mod;
   pure 0
 
-def main := buildmain
---def main := readmain
+--def main := buildmain
+def main := readmain

@@ -28,8 +28,6 @@ using namespace lean;
 ////////////////////////////////////////////////////////////////////////
 // LLVM Specific
 
-namespace lean_llvm {
-
 /* Create a pair from the two arguments. */
 static
 inline obj_res mk_pair(obj_arg x, obj_arg y) {
@@ -44,8 +42,7 @@ inline obj_res mk_pair(obj_arg x, obj_arg y) {
 // StringRef
 
 static inline char * w_string_cstr(object * o) {
-    lean_assert(is_string(o));
-    return reinterpret_cast<char *>(o) + sizeof(string_object);
+  lean_assert(lean_is_string(o)); return lean_to_string(o)->m_data;
 }
 
 object * mk_string(const llvm::StringRef& s) {
@@ -148,11 +145,16 @@ llvm::LLVMContext* toLLVMContext(b_obj_arg o) {
     return static_cast<llvm::LLVMContext*>(external_data(o));
 }
 
+
+extern "C" {
+
 /** Create a new LLVM context object. */
-obj_res newLLVMContext(obj_arg r) {
+obj_res lean_llvm_newLLVMContext(obj_arg r) {
     auto ctx = new llvm::LLVMContext();
     object* ctxObj = alloc_external(getLLVMContextClass(), ctx);
     return set_io_result(r, ctxObj);
+}
+
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -176,7 +178,9 @@ llvm::MemoryBuffer* toMemoryBuffer(b_obj_arg o) {
     return static_cast<llvm::MemoryBuffer*>(external_data(o));
 }
 
-obj_res newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
+extern "C" {
+
+obj_res lean_llvm_newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
     const char* path = string_cstr(fname);
 
     auto MBOrErr = llvm::MemoryBuffer::getFile(path);
@@ -190,7 +194,7 @@ obj_res newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
     return set_io_result(r, bufferObj);
 }
 
-
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Types
@@ -209,14 +213,16 @@ llvm::Type* toType(b_obj_arg o) {
     return static_cast<llvm::Type*>(external_data(o));
 }
 
-obj_res getTypeTag(b_obj_arg tp_obj, obj_arg r) {
+extern "C" {
+
+obj_res lean_llvm_getTypeTag(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     llvm::Type::TypeID id = tp->getTypeID();
     obj_res n = box(id);
     return set_io_result(r, n);
 }
 
-obj_res getTypeName( b_obj_arg tp_obj, obj_arg r ) {
+obj_res lean_llvm_getTypeName( b_obj_arg tp_obj, obj_arg r ) {
   auto tp = toType(tp_obj);
   auto structtp = llvm::dyn_cast<llvm::StructType>( tp );
 
@@ -233,7 +239,7 @@ obj_res getTypeName( b_obj_arg tp_obj, obj_arg r ) {
   return set_io_result( r, mk_option_some( str ) );
 }
 
-obj_res typeIsOpaque( b_obj_arg tp_obj, obj_arg r) {
+obj_res lean_llvm_typeIsOpaque( b_obj_arg tp_obj, obj_arg r) {
   auto tp = toType(tp_obj);
   if( auto stp = llvm::dyn_cast<llvm::StructType>(tp) ) {
     unsigned int opaque = stp->isOpaque();
@@ -244,14 +250,14 @@ obj_res typeIsOpaque( b_obj_arg tp_obj, obj_arg r) {
 }
 
 
-obj_res getIntegerTypeWidth(b_obj_arg tp_obj, obj_arg r) {
+obj_res lean_llvm_getIntegerTypeWidth(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     unsigned int w = tp->getIntegerBitWidth();
     obj_res w_obj = box(w); // TODO, overflow?
     return set_io_result(r, w_obj);
 }
 
-obj_res getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
+obj_res lean_llvm_getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     llvm::PointerType *pt = llvm::dyn_cast<llvm::PointerType>(tp);
     if (!pt) {
@@ -263,7 +269,7 @@ obj_res getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(elt_tp_obj));
 }
 
-obj_res getSequentialTypeData( b_obj_arg tp_obj, obj_arg r) {
+obj_res lean_llvm_getSequentialTypeData( b_obj_arg tp_obj, obj_arg r) {
   auto tp = toType(tp_obj);
   auto seq = llvm::dyn_cast<llvm::SequentialType>(tp);
   if(!seq) {
@@ -277,7 +283,7 @@ obj_res getSequentialTypeData( b_obj_arg tp_obj, obj_arg r) {
   return set_io_result(r, mk_option_some( x ));
 }
 
-obj_res getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
+obj_res lean_llvm_getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
   auto tp = toType(tp_obj);
   auto st = llvm::dyn_cast<llvm::StructType>(tp);
 
@@ -299,7 +305,7 @@ obj_res getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
   return set_io_result( r, mk_option_some(x) );
 }
 
-obj_res getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
+obj_res lean_llvm_getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
   auto tp = toType(tp_obj);
   auto fn = llvm::dyn_cast<llvm::FunctionType>(tp);
 
@@ -320,7 +326,7 @@ obj_res getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
   obj_res x = mk_pair( allocTypeObj(ret), mk_pair( arr, box(varargs) ));
   return set_io_result( r, mk_option_some( x ));
 }
-
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Values
@@ -378,13 +384,14 @@ llvm::BasicBlock* toBasicBlock(b_obj_arg o) {
   return llvm::dyn_cast<llvm::BasicBlock>(toValue(o));
 }
 
+extern "C" {
 
-obj_res getValueType(b_obj_arg v_obj, obj_arg r) {
+obj_res lean_llvm_getValueType(b_obj_arg v_obj, obj_arg r) {
     auto tp = toValue(v_obj)->getType();
     return set_io_result(r,allocTypeObj(tp));
 }
 
-obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
+obj_res lean_llvm_decomposeValue(b_obj_arg v_obj, obj_arg r) {
     auto v = toValue(v_obj);
 
     obj_res x;
@@ -427,7 +434,7 @@ obj_res decomposeValue(b_obj_arg v_obj, obj_arg r) {
     return set_io_result(r, x);
 }
 
-obj_res getConstantTag( b_obj_arg c_obj, obj_arg r ) {
+obj_res lean_llvm_getConstantTag( b_obj_arg c_obj, obj_arg r ) {
   auto v = toValue(c_obj);
   if( auto c = llvm::dyn_cast<llvm::Constant>(v) ) {
     unsigned int id = v->getValueID();
@@ -437,36 +444,39 @@ obj_res getConstantTag( b_obj_arg c_obj, obj_arg r ) {
   }
 }
 
-obj_res getConstantName(b_obj_arg c_obj, obj_arg r) {
+obj_res lean_llvm_getConstantName(b_obj_arg c_obj, obj_arg r) {
     auto v = toValue(c_obj);
     return set_io_result(r, getOptionalNameObj(v->getValueName()));
+}
 }
 
 ////////////////////////////////////////////////////////////////////////
 // Instructions
 
 
-uint8_t instructionLt(b_obj_arg x, b_obj_arg y) {
+extern "C" {
+
+uint8_t lean_llvm_instructionLt(b_obj_arg x, b_obj_arg y) {
   return toValue(x) < toValue(y);
 }
 
-obj_res getInstructionName(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getInstructionName(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     return set_io_result(r, getOptionalNameObj(i->getValueName()));
 }
 
-obj_res getInstructionType(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getInstructionType(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     return set_io_result(r, allocTypeObj(i->getType()));
 }
 
-obj_res getInstructionOpcode(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getInstructionOpcode(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     unsigned int opcode = i->getOpcode();
     return set_io_result(r, box( opcode ) );
 }
 
-obj_res getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto ri = llvm::dyn_cast<llvm::ReturnInst>(i);
@@ -483,7 +493,7 @@ obj_res getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(v_obj));
 }
 
-obj_res getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto bop = llvm::dyn_cast<llvm::BinaryOperator>(i);
@@ -497,7 +507,7 @@ obj_res getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(pair));
 }
 
-obj_res getICmpInstData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getICmpInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto ci = llvm::dyn_cast<llvm::CmpInst>(i);
@@ -523,7 +533,7 @@ obj_res getICmpInstData(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(tuple));
 }
 
-obj_res getBranchInstData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getBranchInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto bi = llvm::dyn_cast<llvm::BranchInst>(i);
@@ -556,7 +566,7 @@ obj_res getBranchInstData(b_obj_arg i_obj, obj_arg r) {
     }
 }
 
-obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
+obj_res lean_llvm_getGEPData( b_obj_arg i_obj, obj_arg r ) {
   auto i = toInstruction(i_obj);
   auto parent = valueParent(i_obj);
   auto gep = llvm::dyn_cast<llvm::GetElementPtrInst>(i);
@@ -582,7 +592,7 @@ obj_res getGEPData( b_obj_arg i_obj, obj_arg r ) {
   return set_io_result( r, mk_option_some( tuple ) );
 }
 
-obj_res getAllocaData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getAllocaData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto ai = llvm::dyn_cast<llvm::AllocaInst>(i);
@@ -604,7 +614,7 @@ obj_res getAllocaData(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(tuple));
 }
 
-obj_res getStoreData (b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getStoreData (b_obj_arg i_obj, obj_arg r) {
 
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
@@ -623,7 +633,7 @@ obj_res getStoreData (b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(tuple));
 }
 
-obj_res getLoadData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getLoadData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto li = llvm::dyn_cast<llvm::LoadInst>(i);
@@ -640,7 +650,7 @@ obj_res getLoadData(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(pair));
 }
 
-obj_res getCastInstData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getCastInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto ci = llvm::dyn_cast<llvm::CastInst>(i);
@@ -655,7 +665,7 @@ obj_res getCastInstData(b_obj_arg i_obj, obj_arg r) {
 }
 
 
-obj_res getCallInstData( b_obj_arg i_obj, obj_arg r ) {
+obj_res lean_llvm_getCallInstData( b_obj_arg i_obj, obj_arg r ) {
   auto i = toInstruction(i_obj);
   auto parent = valueParent(i_obj);
   auto ci = llvm::dyn_cast<llvm::CallInst>(i);
@@ -684,7 +694,7 @@ obj_res getCallInstData( b_obj_arg i_obj, obj_arg r ) {
   return set_io_result(r, mk_option_some( tuple ));
 }
 
-obj_res getSelectInstData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getSelectInstData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto si = llvm::dyn_cast<llvm::SelectInst>(i);
@@ -700,32 +710,35 @@ obj_res getSelectInstData(b_obj_arg i_obj, obj_arg r) {
 
 }
 
-obj_res hasNoUnsignedWrap(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_hasNoUnsignedWrap(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->hasNoUnsignedWrap();
     return set_io_result(r, box(b));
 }
 
-obj_res hasNoSignedWrap(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_hasNoSignedWrap(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->hasNoSignedWrap();
     return set_io_result(r, box(b));
 }
 
-obj_res isExact(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_isExact(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->isExact();
     return set_io_result(r, box(b));
+}
 }
 
 ////////////////////////////////////////////////////////////////////////
 // Basic blocks
 
-uint8_t basicBlockLt(b_obj_arg x, b_obj_arg y) {
+extern "C" {
+
+uint8_t lean_llvm_basicBlockLt(b_obj_arg x, b_obj_arg y) {
     return toValue(x) < toValue(y);
 }
 
-obj_res getPhiData(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getPhiData(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     auto parent = valueParent(i_obj);
     auto phi = llvm::dyn_cast<llvm::PHINode>(i);
@@ -747,12 +760,12 @@ obj_res getPhiData(b_obj_arg i_obj, obj_arg r) {
     return set_io_result(r, mk_option_some(arr));
 }
 
-obj_res getBBName (b_obj_arg f, obj_arg r) {
+obj_res lean_llvm_getBBName (b_obj_arg f, obj_arg r) {
     auto bb = toBasicBlock(f);
     return set_io_result(r, getOptionalNameObj(bb->getValueName()));
 }
 
-obj_res getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
+obj_res lean_llvm_getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
     auto bb = toBasicBlock(bb_obj);
     auto parent = valueParent(bb_obj);
 
@@ -765,7 +778,7 @@ obj_res getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
     return set_io_result(r, arr);
 }
 
-
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Functions
@@ -779,13 +792,15 @@ llvm::Function* toFunction(b_obj_arg o) {
   return llvm::dyn_cast<llvm::Function>(toValue(o));
 }
 
-obj_res getFunctionName(b_obj_arg f, obj_arg r) {
+extern "C" {
+
+obj_res lean_llvm_getFunctionName(b_obj_arg f, obj_arg r) {
     auto fun = toFunction(f);
     std::string str = fun->getValueName()->getKey().str();
     return set_io_result(r, mk_string(str));
 }
 
-obj_res getFunctionArgs(b_obj_arg f, obj_arg r) {
+obj_res lean_llvm_getFunctionArgs(b_obj_arg f, obj_arg r) {
     auto args = toFunction(f)->args();
     size_t sz = args.end() - args.begin();
 
@@ -799,11 +814,11 @@ obj_res getFunctionArgs(b_obj_arg f, obj_arg r) {
     return set_io_result(r, arr);
 }
 
-obj_res getReturnType(b_obj_arg f, obj_arg r) {
+obj_res lean_llvm_getReturnType(b_obj_arg f, obj_arg r) {
     return set_io_result(r, allocTypeObj(toFunction(f)->getReturnType()));
 }
 
-obj_res getBasicBlockArray(b_obj_arg f, obj_arg r) {
+obj_res lean_llvm_getBasicBlockArray(b_obj_arg f, obj_arg r) {
     auto& bblist = toFunction(f)->getBasicBlockList();
     auto parent = valueParent(f);
 
@@ -814,6 +829,7 @@ obj_res getBasicBlockArray(b_obj_arg f, obj_arg r) {
       *(p++) = allocBasicBlockObj(parent, &bb);
     }
     return set_io_result(r, arr);
+}
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -874,7 +890,9 @@ obj_res errorMsgObj(llvm::Error e) {
     return mk_string(msg);
 }
 
-obj_res parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
+extern "C" {
+
+obj_res lean_llvm_parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     auto ctx = toLLVMContext(ctxObj);
     llvm::MemoryBufferRef buf = toMemoryBuffer(b)->getMemBufferRef();
 
@@ -887,7 +905,7 @@ obj_res parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     return set_io_result(r, allocModuleObj(ctxObj, std::move(*moduleOrErr)));
 }
 
-obj_res newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
+obj_res lean_llvm_newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
   auto ctx = toLLVMContext(ctxObj);
   auto nm  = asStringRef( nmObj );
 
@@ -897,7 +915,7 @@ obj_res newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
   return set_io_result( r, modObj );
 }
 
-obj_res printModule( obj_arg modObj, obj_arg r ) {
+obj_res lean_llvm_printModule( obj_arg modObj, obj_arg r ) {
   auto mod = toModule(modObj);
 
   llvm::raw_os_ostream ros(std::cout);
@@ -907,7 +925,7 @@ obj_res printModule( obj_arg modObj, obj_arg r ) {
 }
 
 
-obj_res initNativeFns(obj_arg r) {
+obj_res lean_llvm_initNativeFns(obj_arg r) {
     LLVM_NATIVE_TARGETINFO();
     LLVM_NATIVE_TARGETMC();
     LLVM_NATIVE_TARGET();
@@ -915,20 +933,20 @@ obj_res initNativeFns(obj_arg r) {
     return set_io_result(r, box(0));
 }
 
-obj_res getModuleIdentifier(b_obj_arg m, obj_arg r) {
+obj_res lean_llvm_getModuleIdentifier(b_obj_arg m, obj_arg r) {
     return set_io_result(r, mk_string(toModule(m)->getModuleIdentifier()));
 }
 
-obj_res setModuleIdentifier(b_obj_arg m, b_obj_arg nm, obj_arg r) {
+obj_res lean_llvm_setModuleIdentifier(b_obj_arg m, b_obj_arg nm, obj_arg r) {
     toModule(m)->setModuleIdentifier(string_to_std(nm));
     return set_io_result(r, box(0));
 }
 
-obj_res getModuleDataLayoutStr(b_obj_arg m, obj_arg r) {
+obj_res lean_llvm_getModuleDataLayoutStr(b_obj_arg m, obj_arg r) {
     return set_io_result(r, mk_string(toModule(m)->getDataLayoutStr()));
 }
 
-obj_res getFunctionArray (b_obj_arg m, obj_arg r) {
+obj_res lean_llvm_getFunctionArray (b_obj_arg m, obj_arg r) {
     llvm::Module::FunctionListType& flist = toModule(m)->getFunctionList();
 
     size_t sz = flist.size();
@@ -940,11 +958,14 @@ obj_res getFunctionArray (b_obj_arg m, obj_arg r) {
 
     return set_io_result(r, arr);
 }
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Constants
 
-obj_res getConstIntData(b_obj_arg c_obj, obj_arg r) {
+extern "C" {
+
+obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
     auto cint = llvm::dyn_cast<llvm::ConstantInt>(toValue(c_obj));
     if (!cint) {
 	return set_io_result(r, mk_option_none());
@@ -993,14 +1014,17 @@ obj_res getConstIntData(b_obj_arg c_obj, obj_arg r) {
     obj_res pair = mk_pair(box(width), val_obj);
     return set_io_result(r, mk_option_some(pair));
 }
-
+}
 
 ////////////////////////////////////////////////////////////////////////
 // Triple
 
+extern "C" {
+
 /** Return a String object with a process triple. */
-obj_res getProcessTriple(b_obj_arg unit) {
+obj_res lean_llvm_getProcessTriple(b_obj_arg unit) {
     return mk_string(llvm::sys::getProcessTriple());
+}
 }
 
 /** Get triple class. */
@@ -1015,8 +1039,10 @@ llvm::Triple* getTriple(b_obj_arg o) {
     return static_cast<llvm::Triple*>(external_data(o));
 }
 
+extern "C" {
+
 /** Create a triple object from the provided string. */
-obj_res newTriple(b_obj_arg str) {
+obj_res lean_llvm_newTriple(b_obj_arg str) {
     return alloc_external(getTripleClass(), new llvm::Triple(string_cstr(str)));
 }
 

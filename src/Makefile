@@ -13,13 +13,16 @@ LEAN_PATH   :=$(PWD):$(LEAN_LIBRARY)
 
 LLVM_CONFIG  :=$(LLVM_HOME)/bin/llvm-config
 CLANG        :=$(LLVM_HOME)/bin/clang
+CLANGXX      :=$(LLVM_HOME)/bin/clang++
+
 LLVM_INCLUDE :=$(shell $(LLVM_CONFIG) --includedir)
 LLVM_LIB     :=$(shell $(LLVM_CONFIG) --libdir)
 LLVM_LIBS    :=$(shell $(LLVM_CONFIG) --libs)
 
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
-CXX_FLAGS=-O1 -g -fno-rtti
+C_FLAGS=-O1 -g $(shell $(LLVM_CONFIG) --cflags)
+CXX_FLAGS=-O1 -g $(shell $(LLVM_CONFIG) --cxxflags) -stdlib=libc++ -std=c++14 
 
 SOURCES :=\
   alignment.lean\
@@ -39,7 +42,7 @@ SOURCES :=\
   value.lean
 
 OLEAN=$(SOURCES:.lean=.olean)
-CPP=$(patsubst %.lean,build/%.cpp,$(SOURCES))
+CFILES=$(patsubst %.lean,build/%.c,$(SOURCES))
 OBJ=$(patsubst %.lean,build/%.o,$(SOURCES))
 
 # make sure `build` exists
@@ -59,16 +62,16 @@ tests/test_add.cpp : tests/test_add.lean
 driver : $(OBJ) $(OLEAN) build/driver.o build/llvm_exports.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) -lz -ltermcap $(OBJ) build/driver.o build/llvm_exports.o
 
-orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_codes.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o
+orc_test : build/llvm_ffi.o build/llvm_codes.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o build/orc_test.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $^
 
-build/%.o : build/%.cpp
-	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+build/%.o : build/%.c
+	$(LEANC) $(C_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
 
 build/%.o : %.cpp
-	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+	$(CLANGXX) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
 
-build/%.cpp: %.lean %.olean
+build/%.c: %.lean %.olean
 	LEAN_PATH=$(LEAN_PATH) $(LEAN) -c $@ $<
 
 %.olean: %.lean
@@ -102,4 +105,4 @@ clean:
 	- rm -f tests/test_add.o
 
 .PHONY : clean all
-.PRECIOUS : build/%.cpp build/%.o
+.PRECIOUS : build/%.c build/%.o

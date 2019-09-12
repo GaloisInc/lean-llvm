@@ -14,8 +14,6 @@
 
 using namespace lean;
 
-namespace lean_llvm {
-
 ////////////////////////////////////////////////////////////////////////
 // Compilation
 
@@ -59,7 +57,8 @@ compileArgs(llvm::LLVMContext* ctx, b_obj_arg argArrayObj) {
     return act.takeModule();
 }
 
-obj_res invokeClang(obj_arg ctxObj,
+extern "C" {
+obj_res lean_llvm_invokeClang(obj_arg ctxObj,
 		    b_obj_arg argArrayObj,
 		    lean::obj_arg r) {
     auto ctx = toLLVMContext(ctxObj);
@@ -71,6 +70,7 @@ obj_res invokeClang(obj_arg ctxObj,
     }
 
     return set_io_result(r, allocModuleObj(ctxObj, std::move(modPtr)));
+}
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -118,7 +118,8 @@ CompilerSession* getCompilerSession(b_obj_arg o) {
 }
 
 
-obj_res newCompilerSession(b_obj_arg tripleObj, obj_arg r) {
+extern "C" {
+obj_res lean_llvm_newCompilerSession(b_obj_arg tripleObj, obj_arg r) {
     auto triple = getTriple(tripleObj);
     llvm::orc::JITTargetMachineBuilder jtmb(*triple);
 
@@ -142,7 +143,7 @@ obj_res newCompilerSession(b_obj_arg tripleObj, obj_arg r) {
     return set_io_result(r, sessObj);
 }
 
-obj_res addFromClangCompile(b_obj_arg compSessObj,
+obj_res lean_llvm_addFromClangCompile(b_obj_arg compSessObj,
 			    b_obj_arg argArrayObj,
 			    lean::obj_arg r) {
 
@@ -170,7 +171,7 @@ obj_res addFromClangCompile(b_obj_arg compSessObj,
     return set_io_result(r, box(0));
 }
 
-obj_res lookupFn(b_obj_arg compSessObj,
+obj_res lean_llvm_lookupFn(b_obj_arg compSessObj,
 		 b_obj_arg symNameObj,
 		 b_obj_arg tpObj,
 		 lean::obj_arg r) {
@@ -200,5 +201,4 @@ obj_res lookupFn(b_obj_arg compSessObj,
 
     return set_io_result(r, f);
 }
-
 }
