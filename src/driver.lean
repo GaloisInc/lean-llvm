@@ -6,6 +6,7 @@ import .bv
 import .pp
 import .data_layout
 import .llvm_lib
+import .llvm_output
 import .sim_monad
 import .simulate
 
@@ -30,22 +31,36 @@ def readmain (xs : List String) : IO UInt32 := do
   --            ]
   --            st0;
 
-  let res :=
-     sim.runFunc (symbol.mk "foo")
-             [ sim.value.bv 32 (bv.from_nat 32 8)
+  res <-
+     sim.runFuncPrintTrace (symbol.mk "fib")
+             [ sim.value.bv 64 (bv.from_nat 64 7)
              ]
              st0;
 
   match res with
-  | (Sum.inl err) => throw err
-  | (Sum.inr (sim.value.bv _ x, _)) =>
+  | (sim.value.bv _ x, _) =>
        do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString);
           pure 0
   | _ => pure 0
 
+def testModule : llvm.module :=
+  llvm.module.mk
+     (some "testmodule")
+     []
+     Array.empty -- types
+     Array.empty -- named md
+     Array.empty -- unnamed md
+     RBMap.empty -- comdat
+     Array.empty -- globals
+     Array.empty -- declares
+     Array.empty -- defines
+     Array.empty -- inline ASM
+     Array.empty -- global aliases
+
+
 def buildmain (xs : List String) : IO UInt32 := do
   ctx <- ffi.newContext;
-  mod <- ffi.newModule ctx "testmodule.bc";
+  (_,mod) <- output.run (outputModule ctx testModule);
   ffi.printModule mod;
   pure 0
 
