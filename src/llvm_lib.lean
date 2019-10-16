@@ -236,8 +236,14 @@ def computeNumberings (c0:Nat) (fn:ffi.Function) : extract (bbMap × instrMap) :
          );
      pure (finalbmap, finalimap).
 
-def extractConstant (rawc:ffi.Constant) : extract value :=
-  do tag <- monadLift (ffi.getConstantTag rawc);
+partial def extractConstant : ffi.Constant -> extract value
+| rawc =>
+  do let extractTypedConstant (c:ffi.Constant) : extract (typed value) :=
+            (do tp <- monadLift (ffi.getValueType c) >>= extractType;
+                x  <- extractConstant c;
+                pure (typed.mk tp x));
+
+     tag <- monadLift (ffi.getConstantTag rawc);
      match tag with
      | code.const.ConstantInt =>
        do d <- monadLift (ffi.getConstIntData rawc);
@@ -257,6 +263,17 @@ def extractConstant (rawc:ffi.Constant) : extract value :=
 
      | code.const.ConstantPointerNull => pure value.null
 
+     | code.const.ConstantExpr =>
+        do md <- monadLift (ffi.getConstExprData rawc);
+           match md with
+           | none => throw (IO.userError "expected constant expression")
+           | some (op, xs) =>
+             match op with
+             | code.instr.GetElementPtr =>
+                  do cs <- Array.mmap extractTypedConstant xs;
+                     pure (value.const_expr (const_expr.gep false none (llvm_type.prim_type prim_type.void) cs))
+
+             | _ => throw (IO.userError ("unexpected (or unimplemented) constant instruction opcode: " ++ op.asString))
      | _ => throw (IO.userError ("unknown constant value: " ++ tag.asString))
 
 def extractValue (ctx:value_context) (rawv:ffi.Value) : extract value :=
