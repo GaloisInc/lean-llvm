@@ -11,6 +11,22 @@ import .value
 
 namespace llvm.
 
+inductive trace_event : Type
+| load   (ptr : bv 64) (mt:mem_type) (val:sim.value) : trace_event
+| store  (ptr : bv 64) (mt:mem_type) (val:sim.value) : trace_event
+| alloca (ptr : bv 64) (sz : bytes) : trace_event
+
+namespace trace_event.
+
+def asString : trace_event -> String
+| load ptr mt val  => "LOAD   " ++ ptr.asString ++ " " ++ pp.render val.pretty
+| store ptr mt val => "STORE  " ++ ptr.asString ++ " " ++ pp.render val.pretty
+| alloca ptr sz    => "ALLOCA " ++ ptr.asString ++ " " ++ sz.asString
+
+end trace_event.
+
+
+
 structure frame :=
   (locals   : sim.regMap)
   (func     : define)
@@ -75,6 +91,7 @@ structure sim_conts (z:Type) :=
   (kcall : (Option sim.value → state → z) → symbol → List sim.value → state → z)
          /- call continuation -/
   (kjump : block_label → frame → state → z) /- jump continuation -/
+  (ktrace : trace_event -> z -> z ) /- trace operation -/
 .
 
 structure sim (a:Type) :=
@@ -116,6 +133,9 @@ def setState (st:state) : sim Unit :=
 
 def assignReg (reg:ident) (v:value) : sim Unit :=
   modifyFrame (λfrm => { frm with locals := RBMap.insert frm.locals reg v }).
+
+def trace (ev:trace_event) : sim Unit :=
+  sim.mk (λz conts k frm st => conts.ktrace ev (k () frm st))
 
 def lookupReg (reg:ident) : sim value :=
   do frm <- getFrame;

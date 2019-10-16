@@ -96,7 +96,7 @@ sim_monad.olean : ast.olean bv.olean pp.olean type_context.olean value.olean
 pp.olean : ast.olean
 simulate.olean : ast.olean bv.olean memory.olean pp.olean sim_monad.olean type_context.olean value.olean
 type_context.olean : alignment.olean ast.olean data_layout.olean
-value.olean : ast.olean bv.olean type_context.olean 
+value.olean : ast.olean bv.olean type_context.olean pp.olean
 
 clean:
 	- rm llvm_codes.lean

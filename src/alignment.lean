@@ -36,6 +36,8 @@ def toBytes (x:Nat) : bytes :=
   bytes.mk ((x+7)/8).
 
 namespace bytes.
+def asString (x:bytes) : String := (Nat.toDigits 10 x.val).asString
+
 def toBits (x:bytes) : Nat := 8 * x.val.
 
 def mul (x:bytes) (y:Nat) : bytes :=

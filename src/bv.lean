@@ -10,6 +10,9 @@ namespace bv.
   def less {w:Nat} (x y:bv w) := x.to_nat < y.to_nat.
   instance bvHasLess {w:Nat} : HasLess (bv w) := ⟨bv.less⟩.
   instance decLt {w:Nat} (x y:bv w) : Decidable (x < y) := Nat.decLt x.to_nat y.to_nat.
+
+  def asString {w:Nat} (x:bv w) := "0x" ++ (Nat.toDigits 16 x.to_nat).asString
+
 end bv.
 
 namespace Nat

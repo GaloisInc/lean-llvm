@@ -218,7 +218,10 @@ def evalInstr : instruction → sim (Option sim.value)
       match mt, pv with
       | mem_type.ptr st, value.bv 64 p =>
           match sym_type_to_mem_type dl tds st with
-          | some loadtp => some <$> mem.load dl loadtp p
+          | some loadtp =>
+               do v <- mem.load dl loadtp p;
+                  sim.trace (trace_event.load p loadtp v);
+                  pure (some v)
           | none => throw (IO.userError "expected loadable pointer type in load" )
       | _, _ => throw (IO.userError "expected pointer value in load" )
 
@@ -230,6 +233,7 @@ def evalInstr : instruction → sim (Option sim.value)
             do mt <- eval_mem_type val.type;
                v <- eval mt val.value;
                mem.store st.dl mt p v;
+               sim.trace (trace_event.store p mt v);
                pure none
       | _ => throw (IO.userError "expected pointer value in store" )
 
@@ -253,6 +257,7 @@ def evalInstr : instruction → sim (Option sim.value)
                   let (p,st') := allocOnStack sz a st;
                   sim.setState st';
                   pure p);
+       sim.trace (trace_event.alloca ptr sz);
        pure (some (value.bv 64 ptr))
 
 
@@ -307,6 +312,7 @@ partial def execBlock {z}
     (kerr: IO.Error → z)
     (kret: Option sim.value → state → z)
     (kcall: (Option sim.value → state → z) → symbol → List sim.value → state → z)
+    (ktrace : trace_event → z → z)
     : block_label → frame → state → z
 
 | next, frm, st =>
@@ -315,6 +321,7 @@ partial def execBlock {z}
       , kret  := kret
       , kcall := kcall
       , kjump := execBlock
+      , ktrace := ktrace
       }
       (λ _ _ _ => kerr $ IO.userError ("expected block terminatror at the end of block: "
                                     ++ pp.render (pp_label next)))
@@ -331,7 +338,7 @@ def entryLabel (d:define) : sim block_label :=
   | some bb => pure bb.label
   | none    => throw $ IO.userError ("definition does not have entry block! " ++ d.name.symbol)
 
-partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
+partial def execFunc {z} (zinh:z) (kerr:IO.Error → z) (ktrace : trace_event → z → z)
   : (Option sim.value → state → z) → symbol → List sim.value → state → z
 
 | kret, s, args, st =>
@@ -344,14 +351,21 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z)
       { kerr  := kerr
       , kret  := kret
       , kcall := execFunc
-      , kjump := execBlock zinh kerr kret execFunc
+      , kjump := execBlock zinh kerr kret execFunc ktrace
+      , ktrace := ktrace
       }
       (λ_ _ _ => kerr (IO.userError "unterminated basic block!"))
       (default _)
       st.
 
 def runFunc : symbol → List sim.value → state → Sum IO.Error (Option sim.value × state) :=
-  execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λov st => Sum.inr (ov,st)).
+  execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λ_ z => z) (λov st => Sum.inr (ov,st)).
+
+def runFuncPrintTrace : symbol → List sim.value → state → IO (Option sim.value × state) :=
+  execFunc (throw (IO.userError "bottom"))
+           throw
+           (λev next => IO.println ev.asString >>= λ_ => next)
+           (λov st => pure (ov, st)).
 
 end sim.
 end llvm.
