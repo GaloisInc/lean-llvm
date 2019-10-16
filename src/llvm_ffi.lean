@@ -10,19 +10,19 @@ import .llvm_codes
 
 namespace llvm.ffi.
 
-/- LLVM library types. TODO: mark opaque -/
-def Context := Unit
+constant Context := Unit
 constant Type_ := Unit
-constant BasicBlock := Unit
-constant Function := Unit
-constant MemoryBuffer := Unit
-constant Instruction := Unit
-constant Value := Unit
-constant Constant := Unit
-constant Module := Unit
-def Triple := Unit
 
-instance Context.inhabited : Inhabited Context := inferInstanceAs (Inhabited Unit)
+constant Value := Unit
+def Function := Value
+def BasicBlock := Value
+def Instruction := Value
+def Constant := Value
+
+constant Module := Unit
+constant MemoryBuffer := Unit
+
+def Triple := Unit
 instance Triple.inhabited : Inhabited Triple := inferInstanceAs (Inhabited Unit)
 
 ------------------------------------------------------------------------
@@ -58,6 +58,33 @@ def getStructTypeData : @&Type_ -> IO (Option (Bool × Array Type_)) := default 
 @[extern 2 "lean_llvm_getFunctionTypeData"]
 def getFunctionTypeData : @&Type_ -> IO (Option (Type_ × (Array Type_ × Bool))) := default _
 
+@[extern 3 "lean_llvm_newPrimitiveType"]
+def newPrimitiveType : @& Context → @& llvm.code.type → IO Type_ := default _
+
+@[extern 3 "lean_llvm_newIntegerType"]
+def newIntegerType : @& Context → @& Nat → IO Type_ := default _
+
+@[extern 3 "lean_llvm_newArrayType"]
+def newArrayType : @& Nat → @& Type_ → IO Type_ := default _
+
+@[extern 3 "lean_llvm_newVectorType"]
+def newVectorType : @& Nat → @& Type_ → IO Type_ := default _
+
+@[extern 2 "lean_llvm_newPointerType"]
+def newPointerType : @& Type_ → IO Type_ := default _
+
+@[extern 4 "lean_llvm_newFunctionType"]
+def newFunctionType : @& Type_ → @& Array Type_ → Bool → IO Type_ := default _
+
+@[extern 3 "lean_llvm_newLiteralStructType"]
+def newLiteralStructType : @& Bool → @& Array Type_ → IO Type_ := default _
+
+@[extern 2 "lean_llvm_newOpaqueStructType"]
+def newOpaqueStructType : @& Context → @& String → IO Type_ := default _
+
+@[extern 4 "lean_llvm_setStructTypeBody"]
+def setStructTypeBody : @& Type_ → @& Bool → @& Array Type_ → IO Unit := default _
+
 ------------------------------------------------------------------------
 -- Value
 
@@ -74,6 +101,11 @@ inductive value_decomposition
 @[extern 2 "lean_llvm_decomposeValue"]
 def decomposeValue : @& Value -> IO value_decomposition := default _
 
+def functionToValue (f:Function)       : Value := f
+def basicBlockToValue (bb:BasicBlock)  : Value := bb
+def instructionToValue (i:Instruction) : Value := i
+def constantToValue (c:Constant)       : Value := c
+
 ------------------------------------------------------------------------
 -- Constant
 
@@ -86,6 +118,9 @@ def getConstantTag : @&Constant -> IO llvm.code.const := default _
 -- return bitwidth and value
 @[extern 2 "lean_llvm_getConstIntData"]
 def getConstIntData : @& Constant -> IO (Option (Nat × Nat)) := default _
+
+@[extern 2 "lean_llvm_getConstExprData"]
+def getConstExprData : @& Constant -> IO (Option (llvm.code.instr × Array Constant)) := default _
 
 ------------------------------------------------------------------------
 -- Instruction
@@ -167,8 +202,8 @@ def getInstructionArray : @& BasicBlock -> IO (Array Instruction) := default _
 ------------------------------------------------------------------------
 -- Function
 
--- @[extern 3 "lean_llvm_newFunction"]
--- def newFunction : @&Module → @&String → IO Function := default _
+@[extern 3 "lean_llvm_newFunction"]
+def newFunction : Module → @&Type_ → @&String → IO Function := default _
 
 @[extern 2 "lean_llvm_getFunctionName"]
 def getFunctionName : @& Function -> IO String := default _

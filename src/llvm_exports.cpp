@@ -25,18 +25,6 @@ from Lean.
 
 using namespace lean;
 
-////////////////////////////////////////////////////////////////////////
-// LLVM Specific
-
-/* Create a pair from the two arguments. */
-static
-inline obj_res mk_pair(obj_arg x, obj_arg y) {
-    obj_res r = alloc_cnstr(0, 2, 0);
-    cnstr_set(r, 0, x);
-    cnstr_set(r, 1, y);
-    return r;
-}
-
 
 ////////////////////////////////////////////////////////////////////////
 // StringRef
@@ -145,18 +133,6 @@ llvm::LLVMContext* toLLVMContext(b_obj_arg o) {
     return static_cast<llvm::LLVMContext*>(external_data(o));
 }
 
-
-extern "C" {
-
-/** Create a new LLVM context object. */
-obj_res lean_llvm_newContext(obj_arg r) {
-    auto ctx = new llvm::LLVMContext();
-    object* ctxObj = alloc_external(getLLVMContextClass(), ctx);
-    return set_io_result(r, ctxObj);
-}
-
-}
-
 ////////////////////////////////////////////////////////////////////
 // MemoryBuffer
 
@@ -178,24 +154,6 @@ llvm::MemoryBuffer* toMemoryBuffer(b_obj_arg o) {
     return static_cast<llvm::MemoryBuffer*>(external_data(o));
 }
 
-extern "C" {
-
-obj_res lean_llvm_newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
-    const char* path = string_cstr(fname);
-
-    auto MBOrErr = llvm::MemoryBuffer::getFile(path);
-    if (std::error_code EC = MBOrErr.getError()) {
-	return set_io_error(r, mk_string(EC.message()));
-    }
-
- auto b = std::move(MBOrErr.get());
-    object* bufferObj = alloc_external(getMemoryBufferClass(), b.get());
-    b.release();
-    return set_io_result(r, bufferObj);
-}
-
-}
-
 ////////////////////////////////////////////////////////////////////////
 // Types
 
@@ -213,13 +171,265 @@ llvm::Type* toType(b_obj_arg o) {
     return static_cast<llvm::Type*>(external_data(o));
 }
 
+////////////////////////////////////////////////////////////////////////
+// Values
+
+static
+external_object_class* getValueObjectClass() {
+    // Use static thread to make this thread safe due to static initialization rule.
+    static
+	external_object_class* c(register_external_object_class(&ownedExternalFinalize<llvm::Value>,
+								&ownedExternalForeach<llvm::Value>));
+    return c;
+}
+
+obj_res getOptionalNameObj(llvm::ValueName* nm) {
+    return (nm == nullptr)
+	? mk_option_none()
+	: mk_option_some(mk_string(nm->getKey()));
+}
+
+obj_res allocValueObj(obj_res parent, llvm::Value* v) {
+    auto e = new OwnedExternal<llvm::Value>(parent, v);
+    return alloc_external(getValueObjectClass(), e);
+}
+
+static
+llvm::Value* toValue(b_obj_arg o) {
+  lean_assert(external_class(o) == getValueObjectClass());
+  return static_cast<OwnedExternal<llvm::Value>*>(external_data(o))->value;
+}
+
+static
+obj_res valueParent(b_obj_arg o) {
+    lean_assert(external_class(o) == getValueObjectClass());
+    return static_cast<OwnedExternal<llvm::Value>*>(external_data(o))->ctxObj;
+}
+
+// llvm::Instruction is a subtype of llvm::Value, so we can use the same
+// allocation strategy for it.
+obj_res allocInstructionObj(obj_res parent, llvm::Instruction* i) {
+  return allocValueObj( parent, i );
+}
+
+static
+llvm::Instruction* toInstruction(b_obj_arg o) {
+  return llvm::dyn_cast<llvm::Instruction>(toValue(o));
+}
+
+// llvm::BasicBlock is a subtype of llvm::Value, so we can use the same
+// allocation strategy for it.
+obj_res allocBasicBlockObj(obj_arg parent, llvm::BasicBlock* bb) {
+  return allocValueObj( parent, bb );
+}
+
+llvm::BasicBlock* toBasicBlock(b_obj_arg o) {
+  return llvm::dyn_cast<llvm::BasicBlock>(toValue(o));
+}
+
+////////////////////////////////////////////////////////////////////////
+// Functions
+
+// Allocate a function object (the parent lifetime should exceed this objects).
+obj_res allocFunctionObj(obj_arg parent, llvm::Function* f) {
+  return allocValueObj( parent, f );
+}
+
+llvm::Function* toFunction(b_obj_arg o) {
+  return llvm::dyn_cast<llvm::Function>(toValue(o));
+}
+
+////////////////////////////////////////////////////////////////////
+// Module
+
+// This owns a LLVM module, and also a pointer to the context to ensure
+// the context is not freed as long as the module is alive.
+struct ModuleRec {
+    // Lean object for context (we hold a handle to this so that
+    // it is not deleted before we are done with the module).
+    object* ctxObj;
+
+    std::unique_ptr<llvm::Module> module;
+
+    ModuleRec(const ModuleRec&) = delete;
+
+    ModuleRec(object* c, std::unique_ptr<llvm::Module> m)
+	: ctxObj(c), module(std::move(m)) {
+    }
+
+    ~ModuleRec() {
+	module = 0;
+	dec_ref(ctxObj);
+    }
+
+};
+
+void moduleRecForeach(void * p, b_obj_arg a) {
+    ModuleRec* d = static_cast<ModuleRec*>(p);
+    apply_1(a, d->ctxObj);
+}
+
+static
+external_object_class* getModuleRecClass() {
+    // Use static thread to make this thread safe due to static initialization rule.
+    static
+	external_object_class* c(register_external_object_class(&deleteFinalize<ModuleRec>,
+								&moduleRecForeach));
+    return c;
+}
+
+obj_res allocModuleObj(object* ctx, std::unique_ptr<llvm::Module> m) {
+    return alloc_external(getModuleRecClass(), new ModuleRec(ctx, std::move(m)));
+}
+
+llvm::Module* toModule(b_obj_arg o) {
+    lean_assert(external_class(o) == getModuleRecClass());
+    auto p = static_cast<ModuleRec*>(external_data(o));
+    return p->module.get();
+}
+
+/** Create an object from an LLVM error. */
+obj_res errorMsgObj(llvm::Error e) {
+    std::string msg;
+    handleAllErrors(std::move(e), [&](llvm::ErrorInfoBase &eib) {
+        msg = eib.message();
+    });
+    return mk_string(msg);
+}
+
+////////////////////////////////////////////////////////////////////////
+// Triple
+
+/** Get triple class. */
+static
+external_object_class* getTripleClass() {
+    static external_object_class* c = registerDeleteClass<llvm::Triple>();
+    return c;
+}
+
+llvm::Triple* getTriple(b_obj_arg o) {
+    lean_assert(external_class(o) == getTripleClass());
+    return static_cast<llvm::Triple*>(external_data(o));
+}
+
+
+
 extern "C" {
+
+/** Create a new LLVM context object. */
+obj_res lean_llvm_newContext(obj_arg r) {
+    auto ctx = new llvm::LLVMContext();
+    object* ctxObj = alloc_external(getLLVMContextClass(), ctx);
+    return set_io_result(r, ctxObj);
+}
+
+
+obj_res lean_llvm_newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
+    const char* path = string_cstr(fname);
+
+    auto MBOrErr = llvm::MemoryBuffer::getFile(path);
+    if (std::error_code EC = MBOrErr.getError()) {
+	return set_io_error(r, mk_string(EC.message()));
+    }
+
+ auto b = std::move(MBOrErr.get());
+    object* bufferObj = alloc_external(getMemoryBufferClass(), b.get());
+    b.release();
+    return set_io_result(r, bufferObj);
+}
 
 obj_res lean_llvm_getTypeTag(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     llvm::Type::TypeID id = tp->getTypeID();
     obj_res n = box(id);
     return set_io_result(r, n);
+}
+
+obj_res lean_llvm_newPrimitiveType( b_obj_arg ctx_obj, b_obj_arg code, obj_arg r ) {
+  llvm::LLVMContext *ctx = toLLVMContext(ctx_obj);
+  llvm::Type::TypeID id = static_cast<llvm::Type::TypeID>(unbox(code));
+  if (auto tp = llvm::Type::getPrimitiveType(*ctx, id) ) {
+    obj_res tp_obj = allocTypeObj(tp);
+    return set_io_result( r, tp_obj );
+  }
+
+  return set_io_error( r, mk_string("newPrimitiveType expected primitive type code") );
+}
+
+obj_res lean_llvm_newIntegerType( b_obj_arg ctx_obj, b_obj_arg w, obj_arg r ) {
+  llvm::LLVMContext *ctx = toLLVMContext(ctx_obj);
+  auto tp = llvm::IntegerType::get(*ctx, unbox(w));
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+obj_res lean_llvm_newArrayType( b_obj_arg n, b_obj_arg tp_obj, obj_arg r ) {
+  auto eltp = toType(tp_obj);
+  auto tp = llvm::ArrayType::get( eltp, unbox(n) );
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+obj_res lean_llvm_newVectorType( b_obj_arg n, b_obj_arg tp_obj, obj_arg r ) {
+  auto eltp = toType(tp_obj);
+  auto tp = llvm::VectorType::get( eltp, unbox(n) );
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+obj_res lean_llvm_newPointerType( b_obj_arg tp_obj, obj_arg r ) {
+  auto eltp = toType(tp_obj);
+  auto addrSpace = 0;
+  auto tp = llvm::PointerType::get( eltp, addrSpace );
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+obj_res lean_llvm_newFunctionType( b_obj_arg ret_obj, b_obj_arg args_obj, b_obj_arg varargs, obj_arg r ) {
+  auto ret = toType(ret_obj);
+  
+  size_t n = array_size(args_obj);
+  llvm::Type* tps[n];
+  for( size_t i = 0; i<n; i++ ) {
+    tps[i] = toType(array_get(args_obj, i));
+  }
+  llvm::ArrayRef<llvm::Type*> args( tps, n );
+  auto tp = llvm::FunctionType::get( ret, args, unbox(varargs) );
+
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+
+obj_res lean_llvm_newLiteralStructType( b_obj_arg packed, b_obj_arg tps_obj, obj_arg r ) {
+  size_t n = array_size(tps_obj);
+  llvm::Type* tps[n];
+  for( size_t i = 0; i<n; i++ ) {
+    tps[i] = toType(array_get(tps_obj, i));
+  }
+  llvm::ArrayRef<llvm::Type*> tps_arr( tps, n );
+  auto tp = llvm::StructType::create( tps_arr, llvm::StringRef(), unbox(packed) );
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+obj_res lean_llvm_newOpaqueStructType( b_obj_arg ctx_obj, b_obj_arg nm_obj, obj_arg r ) {
+  auto ctx = toLLVMContext(ctx_obj);
+  auto nm  = asStringRef(nm_obj);
+
+  auto tp = llvm::StructType::create( *ctx, nm );
+  return set_io_result( r, allocTypeObj(tp) );
+}
+
+obj_res lean_llvm_setStructTypeBody( b_obj_arg tp_obj, b_obj_arg packed, b_obj_arg tps_obj, obj_arg r ) {
+  if( auto tp = llvm::dyn_cast<llvm::StructType>(toType(tp_obj)) ) {
+
+    size_t n = array_size(tps_obj);
+    llvm::Type* tps[n];
+    for( size_t i = 0; i<n; i++ ) {
+      tps[i] = toType(array_get(tps_obj, i));
+    }
+    llvm::ArrayRef<llvm::Type*> tps_arr( tps, n );
+
+    tp->setBody( tps_arr, unbox(packed) );
+    return set_io_result( r, box(0) );
+  }
+
+  return set_io_result( r, mk_string("expected struct type in setStructTypeBody"));
 }
 
 obj_res lean_llvm_getTypeName( b_obj_arg tp_obj, obj_arg r ) {
@@ -328,61 +538,6 @@ obj_res lean_llvm_getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
 }
 }
 
-////////////////////////////////////////////////////////////////////////
-// Values
-
-static
-external_object_class* getValueObjectClass() {
-    // Use static thread to make this thread safe due to static initialization rule.
-    static
-	external_object_class* c(register_external_object_class(&ownedExternalFinalize<llvm::Value>,
-								&ownedExternalForeach<llvm::Value>));
-    return c;
-}
-
-obj_res getOptionalNameObj(llvm::ValueName* nm) {
-    return (nm == nullptr)
-	? mk_option_none()
-	: mk_option_some(mk_string(nm->getKey()));
-}
-
-obj_res allocValueObj(obj_res parent, llvm::Value* v) {
-    auto e = new OwnedExternal<llvm::Value>(parent, v);
-    return alloc_external(getValueObjectClass(), e);
-}
-
-static
-llvm::Value* toValue(b_obj_arg o) {
-  lean_assert(external_class(o) == getValueObjectClass());
-  return static_cast<OwnedExternal<llvm::Value>*>(external_data(o))->value;
-}
-
-static
-obj_res valueParent(b_obj_arg o) {
-    lean_assert(external_class(o) == getValueObjectClass());
-    return static_cast<OwnedExternal<llvm::Value>*>(external_data(o))->ctxObj;
-}
-
-// llvm::Instruction is a subtype of llvm::Value, so we can use the same
-// allocation strategy for it.
-obj_res allocInstructionObj(obj_res parent, llvm::Instruction* i) {
-  return allocValueObj( parent, i );
-}
-
-static
-llvm::Instruction* toInstruction(b_obj_arg o) {
-  return llvm::dyn_cast<llvm::Instruction>(toValue(o));
-}
-
-// llvm::BasicBlock is a subtype of llvm::Value, so we can use the same
-// allocation strategy for it.
-obj_res allocBasicBlockObj(obj_arg parent, llvm::BasicBlock* bb) {
-  return allocValueObj( parent, bb );
-}
-
-llvm::BasicBlock* toBasicBlock(b_obj_arg o) {
-  return llvm::dyn_cast<llvm::BasicBlock>(toValue(o));
-}
 
 extern "C" {
 
@@ -448,13 +603,6 @@ obj_res lean_llvm_getConstantName(b_obj_arg c_obj, obj_arg r) {
     auto v = toValue(c_obj);
     return set_io_result(r, getOptionalNameObj(v->getValueName()));
 }
-}
-
-////////////////////////////////////////////////////////////////////////
-// Instructions
-
-
-extern "C" {
 
 uint8_t lean_llvm_instructionLt(b_obj_arg x, b_obj_arg y) {
   return toValue(x) < toValue(y);
@@ -727,12 +875,6 @@ obj_res lean_llvm_isExact(b_obj_arg i_obj, obj_arg r) {
     bool b = i->isExact();
     return set_io_result(r, box(b));
 }
-}
-
-////////////////////////////////////////////////////////////////////////
-// Basic blocks
-
-extern "C" {
 
 uint8_t lean_llvm_basicBlockLt(b_obj_arg x, b_obj_arg y) {
     return toValue(x) < toValue(y);
@@ -778,21 +920,23 @@ obj_res lean_llvm_getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
     return set_io_result(r, arr);
 }
 
+obj_res lean_llvm_newFunction( obj_arg m_obj, b_obj_arg tp_obj, b_obj_arg nm_obj, obj_arg r ) {
+  auto mod = toModule(m_obj);
+  auto tp  = toType(tp_obj);
+  auto str = asStringRef(nm_obj);
+
+  auto linkage = llvm::GlobalValue::LinkageTypes::ExternalLinkage;
+
+  if( auto fnty = llvm::dyn_cast<llvm::FunctionType>(tp) ) {
+    llvm::Twine tw( str );
+    llvm::Function* f = llvm::Function::Create( fnty, linkage, tw, mod );
+
+    obj_arg f_obj = allocFunctionObj( m_obj, f );
+    return set_io_result( r, f_obj );
+  }
+
+  return set_io_error(r, mk_string("Expected function type in newFunction") );
 }
-
-////////////////////////////////////////////////////////////////////////
-// Functions
-
-// Allocate a function object (the parent lifetime should exceed this objects).
-obj_res allocFunctionObj(obj_arg parent, llvm::Function* f) {
-  return allocValueObj( parent, f );
-}
-
-llvm::Function* toFunction(b_obj_arg o) {
-  return llvm::dyn_cast<llvm::Function>(toValue(o));
-}
-
-extern "C" {
 
 obj_res lean_llvm_getFunctionName(b_obj_arg f, obj_arg r) {
     auto fun = toFunction(f);
@@ -832,63 +976,6 @@ obj_res lean_llvm_getBasicBlockArray(b_obj_arg f, obj_arg r) {
 }
 }
 
-////////////////////////////////////////////////////////////////////
-// Module
-
-// This owns a LLVM module, and also a pointer to the context to ensure
-// the context is not freed as long as the module is alive.
-struct ModuleRec {
-    // Lean object for context (we hold a handle to this so that
-    // it is not deleted before we are done with the module).
-    object* ctxObj;
-
-    std::unique_ptr<llvm::Module> module;
-
-    ModuleRec(const ModuleRec&) = delete;
-
-    ModuleRec(object* c, std::unique_ptr<llvm::Module> m)
-	: ctxObj(c), module(std::move(m)) {
-    }
-
-    ~ModuleRec() {
-	module = 0;
-	dec_ref(ctxObj);
-    }
-
-};
-
-void moduleRecForeach(void * p, b_obj_arg a) {
-    ModuleRec* d = static_cast<ModuleRec*>(p);
-    apply_1(a, d->ctxObj);
-}
-
-static
-external_object_class* getModuleRecClass() {
-    // Use static thread to make this thread safe due to static initialization rule.
-    static
-	external_object_class* c(register_external_object_class(&deleteFinalize<ModuleRec>,
-								&moduleRecForeach));
-    return c;
-}
-
-obj_res allocModuleObj(object* ctx, std::unique_ptr<llvm::Module> m) {
-    return alloc_external(getModuleRecClass(), new ModuleRec(ctx, std::move(m)));
-}
-
-llvm::Module* toModule(b_obj_arg o) {
-    lean_assert(external_class(o) == getModuleRecClass());
-    auto p = static_cast<ModuleRec*>(external_data(o));
-    return p->module.get();
-}
-
-/** Create an object from an LLVM error. */
-obj_res errorMsgObj(llvm::Error e) {
-    std::string msg;
-    handleAllErrors(std::move(e), [&](llvm::ErrorInfoBase &eib) {
-        msg = eib.message();
-    });
-    return mk_string(msg);
-}
 
 extern "C" {
 
@@ -958,12 +1045,7 @@ obj_res lean_llvm_getFunctionArray (b_obj_arg m, obj_arg r) {
 
     return set_io_result(r, arr);
 }
-}
 
-////////////////////////////////////////////////////////////////////////
-// Constants
-
-extern "C" {
 
 obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
     auto cint = llvm::dyn_cast<llvm::ConstantInt>(toValue(c_obj));
@@ -1014,32 +1096,37 @@ obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
     obj_res pair = mk_pair(box(width), val_obj);
     return set_io_result(r, mk_option_some(pair));
 }
+
+obj_res lean_llvm_getConstExprData (b_obj_arg c_obj, obj_arg r ) {
+  auto parent = valueParent(c_obj);
+  auto cexpr = llvm::dyn_cast<llvm::ConstantExpr>(toValue(c_obj));
+  if( !cexpr ) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  unsigned opcode = cexpr->getOpcode();
+  unsigned sz = cexpr->getNumOperands();
+
+  obj_res arr = alloc_array(sz, sz);
+  auto p = array_cptr(arr);
+
+  for( unsigned i=0; i<sz; i++ ) {
+    auto cop = llvm::dyn_cast<llvm::Constant>( cexpr->getOperand(i) );
+    if( cop ) {
+      *(p++) = allocValueObj(parent, cop);
+    } else {
+      // FIXME... leaks memory here?
+      return set_io_error( r, mk_string("Expected constant value argument to constant expr!") );
+    }
+  }
+  return set_io_result( r, mk_option_some( mk_pair( box(opcode), arr )) );
 }
 
-////////////////////////////////////////////////////////////////////////
-// Triple
-
-extern "C" {
 
 /** Return a String object with a process triple. */
 obj_res lean_llvm_getProcessTriple(b_obj_arg unit) {
     return mk_string(llvm::sys::getProcessTriple());
 }
-}
-
-/** Get triple class. */
-static
-external_object_class* getTripleClass() {
-    static external_object_class* c = registerDeleteClass<llvm::Triple>();
-    return c;
-}
-
-llvm::Triple* getTriple(b_obj_arg o) {
-    lean_assert(external_class(o) == getTripleClass());
-    return static_cast<llvm::Triple*>(external_data(o));
-}
-
-extern "C" {
 
 /** Create a triple object from the provided string. */
 obj_res lean_llvm_newTriple(b_obj_arg str) {
