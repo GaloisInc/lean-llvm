@@ -1,4 +1,3 @@
-
 import init.data.array
 import init.data.int
 import init.data.rbmap
@@ -98,7 +97,7 @@ partial def store (dl:data_layout) : mem_type → bv 64 → sim.value → sim Un
            ("Expected vector value with " ++ toString n ++ " elements, but got " ++ toString vs.size))
 
 | mem_type.array n _, p, sim.value.array mt vs =>
-    let (sz,a) := mem_type.szAndAlign dl mt;
+ do let (sz,a) := mem_type.szAndAlign dl mt;
     let sz' := bv.from_nat 64 (padToAlignment sz a).val;
     if vs.size = n then
       () <$ Array.miterate vs p (λ_idx v p' =>
@@ -107,8 +106,47 @@ partial def store (dl:data_layout) : mem_type → bv 64 → sim.value → sim Un
     else throw (IO.userError
            ("Expected array value with " ++ toString n ++ " elements, but got " ++ toString vs.size))
 
+
 | _, _, _ => throw (IO.userError "Type/value mismatch in store!")
 .
 
 end mem.
+
+def allocGlobalVariable (gv:global) : sim Unit :=
+   do st <- sim.getState;
+      mt <- sim.eval_mem_type gv.type;
+      ptr <- 
+        (match st.symmap.find gv.sym with
+         | some ptr => pure ptr
+         | none =>
+             do let (sz, align) := mem_type.szAndAlign st.dl mt;
+                let (ptr, st') := allocOnHeap sz align st;
+                sim.setState (linkSymbol st' (gv.sym, ptr));
+                pure ptr);
+
+      match gv.value with
+      | none => pure ()
+      | some val =>
+         do v <- sim.eval mt val;
+            mem.store st.dl mt ptr v
+
+def allocGlobalSymbols (mod:module) : sim Unit :=
+  do st0 <- getState;  
+     setState (List.foldr allocFunctionSymbol st0
+        (List.map declare.name mod.declares.toList ++ List.map define.name mod.defines.toList));
+     mod.globals.miterate () (λ_ gv _ => allocGlobalVariable gv)
+  
+def runInitializers (mod:module) (dl:data_layout) (ls:List (symbol × bv 64)): IO state :=
+  runSim 
+    (allocGlobalSymbols mod) 
+    { kerr := throw
+    , kret := λ _ _ => throw "No return point"
+    , kcall := λ _ _ _ _ => throw "no calls"
+    , kjump := λ _ _ _ => throw "no jumps"
+    , ktrace := λ _ a => a
+    }
+    (λ _u _frm st => pure st)
+    (default _)
+    (initializeState mod dl ls)
+
 end llvm.

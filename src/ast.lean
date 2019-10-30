@@ -271,10 +271,10 @@ with value : Type
   | const_expr : const_expr -> value
   | symbol : symbol -> value
   | null  : value
-  | array : llvm_type -> List value -> value
-  | vector : llvm_type -> List value -> value
-  | struct : List (typed value) -> value
-  | packed_struct : List (typed value) -> value
+  | array : llvm_type -> Array value -> value
+  | vector : llvm_type -> Array value -> value
+  | struct : Array (typed value) -> value
+  | packed_struct : Array (typed value) -> value
   | string : String -> value -- FIXME, should probably actually be list of word8
   | undef : value
   | label : block_label -> value

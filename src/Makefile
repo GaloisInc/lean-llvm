@@ -12,14 +12,20 @@ LEAN_LIBRARY:=$(LEAN_HOME)/lib/lean/library
 LEAN_PATH   :=$(PWD):$(LEAN_LIBRARY)
 
 LLVM_CONFIG  :=$(LLVM_HOME)/bin/llvm-config
-CLANG        :=$(LLVM_HOME)/bin/clang
+#CLANG        :=$(LLVM_HOME)/bin/clang
+#CLANGXX      :=$(LLVM_HOME)/bin/clang++
+
+CLANG:=clang
+CLANGXX:=clang++
+
 LLVM_INCLUDE :=$(shell $(LLVM_CONFIG) --includedir)
 LLVM_LIB     :=$(shell $(LLVM_CONFIG) --libdir)
 LLVM_LIBS    :=$(shell $(LLVM_CONFIG) --libs)
 
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
-CXX_FLAGS=-O1 -g -fno-rtti
+C_FLAGS=-O1 -g -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include $(shell $(LLVM_CONFIG) --cflags) 
+CXX_FLAGS=-O1 -g -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include $(shell $(LLVM_CONFIG) --cxxflags) -stdlib=libc++ -std=c++14 
 
 SOURCES :=\
   alignment.lean\
@@ -30,6 +36,7 @@ SOURCES :=\
   llvm_codes.lean\
   llvm_ffi.lean \
   llvm_lib.lean\
+  llvm_output.lean\
   memory.lean\
   sim_monad.lean\
   simulate.lean\
@@ -38,7 +45,7 @@ SOURCES :=\
   value.lean
 
 OLEAN=$(SOURCES:.lean=.olean)
-CPP=$(patsubst %.lean,build/%.cpp,$(SOURCES))
+CFILES=$(patsubst %.lean,build/%.c,$(SOURCES))
 OBJ=$(patsubst %.lean,build/%.o,$(SOURCES))
 
 # make sure `build` exists
@@ -58,16 +65,16 @@ tests/test_add.cpp : tests/test_add.lean
 driver : $(OBJ) $(OLEAN) build/driver.o build/llvm_exports.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) -lz -ltermcap $(OBJ) build/driver.o build/llvm_exports.o
 
-orc_test : build/orc_test.o build/llvm_ffi.o build/llvm_codes.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o
+orc_test : build/llvm_ffi.o build/llvm_codes.o build/clang_ffi.o build/llvm_exports.o build/jit_exports.o build/orc_test.o
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $^
 
-build/%.o : build/%.cpp
-	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+build/%.o : build/%.c
+	$(LEANC) $(C_FLAGS) -o $@ -c -I$(LEAN_INCLUDE) $<
 
 build/%.o : %.cpp
-	$(LEANC) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+	$(CLANGXX) $(CXX_FLAGS) -I$(LEAN_INCLUDE) -o $@ -c $<
 
-build/%.cpp: %.lean %.olean
+build/%.c: %.lean %.olean
 	LEAN_PATH=$(LEAN_PATH) $(LEAN) -c $@ $<
 
 %.olean: %.lean
@@ -86,12 +93,13 @@ orc_test.olean : clang_ffi.olean llvm_ffi.olean
 clang_ffi.olean : llvm_ffi.olean
 llvm_ffi.olean : llvm_codes.olean
 llvm_lib.olean : ast.olean pp.olean parser.olean data_layout.olean llvm_ffi.olean
+llvm_output.olean : ast.olean pp.olean data_layout.olean llvm_ffi.olean
 memory.olean : ast.olean bv.olean pp.olean sim_monad.olean type_context.olean value.olean
 sim_monad.olean : ast.olean bv.olean pp.olean type_context.olean value.olean
 pp.olean : ast.olean
 simulate.olean : ast.olean bv.olean memory.olean pp.olean sim_monad.olean type_context.olean value.olean
 type_context.olean : alignment.olean ast.olean data_layout.olean
-value.olean : ast.olean bv.olean type_context.olean 
+value.olean : ast.olean bv.olean type_context.olean pp.olean
 
 clean:
 	- rm llvm_codes.lean
@@ -100,4 +108,4 @@ clean:
 	- rm -f tests/test_add.o
 
 .PHONY : clean all
-.PRECIOUS : build/%.cpp build/%.o
+.PRECIOUS : build/%.c build/%.o
