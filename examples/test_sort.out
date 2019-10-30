@@ -1,0 +1,711 @@
+source_filename = "../test_sort.bc"
+target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
+@arr =   global [10 x i64] [i64 20307,i64 3714,i64 12422,i64 16382,i64 29230,i64 18967,i64 22962,i64 27145,i64 12275,i64 4617], align 16
+@digits =   global [17 x i8] [i8 48,i8 49,i8 50,i8 51,i8 52,i8 53,i8 54,i8 55,i8 56,i8 57,i8 97,i8 98,i8 99,i8 100,i8 101,i8 102,i8 0], align 16
+define  i32 @partition(i32 %0,i32 %1)  {
+%2:
+    %3 = alloca i32, align 4
+    %4 = alloca i32, align 4
+    %5 = alloca i64, align 8
+    %6 = alloca i32, align 4
+    %7 = alloca i32, align 4
+    %8 = alloca i64, align 8
+    store i32 %0, i32* %3, align 4
+    store i32 %1, i32* %4, align 4
+    %9 = load i32* %3, align 4
+    %10 = zext i32 %9 to i64
+    %11 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %10
+    %12 = load i64* %11, align 8
+    store i64 %12, i64* %5, align 8
+    %13 = load i32* %3, align 4
+    store i32 %13, i32* %6, align 4
+    %14 = load i32* %3, align 4
+    %15 = add i32 %14, 1
+    store i32 %15, i32* %7, align 4
+    jump label %16
+
+%16:
+    %17 = load i32* %7, align 4
+    %18 = load i32* %4, align 4
+    %19 = icmp ule i32 %17, %18
+    br i1 %19, label %20, label %46
+
+%20:
+    %21 = load i32* %7, align 4
+    %22 = zext i32 %21 to i64
+    %23 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %22
+    %24 = load i64* %23, align 8
+    store i64 %24, i64* %8, align 8
+    %25 = load i64* %8, align 8
+    %26 = load i64* %5, align 8
+    %27 = icmp ult i64 %25, %26
+    br i1 %27, label %28, label %42
+
+%28:
+    %29 = load i32* %6, align 4
+    %30 = add i32 %29, 1
+    store i32 %30, i32* %6, align 4
+    %31 = load i32* %6, align 4
+    %32 = zext i32 %31 to i64
+    %33 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %32
+    %34 = load i64* %33, align 8
+    %35 = load i32* %7, align 4
+    %36 = zext i32 %35 to i64
+    %37 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %36
+    store i64 %34, i64* %37, align 8
+    %38 = load i64* %8, align 8
+    %39 = load i32* %6, align 4
+    %40 = zext i32 %39 to i64
+    %41 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %40
+    store i64 %38, i64* %41, align 8
+    jump label %42
+
+%42:
+    jump label %43
+
+%43:
+    %44 = load i32* %7, align 4
+    %45 = add i32 %44, 1
+    store i32 %45, i32* %7, align 4
+    jump label %16
+
+%46:
+    %47 = load i32* %6, align 4
+    %48 = zext i32 %47 to i64
+    %49 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %48
+    %50 = load i64* %49, align 8
+    %51 = load i32* %3, align 4
+    %52 = zext i32 %51 to i64
+    %53 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %52
+    store i64 %50, i64* %53, align 8
+    %54 = load i64* %5, align 8
+    %55 = load i32* %6, align 4
+    %56 = zext i32 %55 to i64
+    %57 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %56
+    store i64 %54, i64* %57, align 8
+    %58 = load i32* %6, align 4
+    ret i32 %58
+
+}
+
+define  void @quicksort(i32 %0,i32 %1)  {
+%2:
+    %3 = alloca i32, align 4
+    %4 = alloca i32, align 4
+    %5 = alloca i32, align 4
+    store i32 %0, i32* %3, align 4
+    store i32 %1, i32* %4, align 4
+    %6 = load i32* %3, align 4
+    %7 = load i32* %4, align 4
+    %8 = icmp ult i32 %6, %7
+    br i1 %8, label %9, label %19
+
+%9:
+    %10 = load i32* %3, align 4
+    %11 = load i32* %4, align 4
+    %12 = call i32 @partition (i32 %10,i32 %11)
+    store i32 %12, i32* %5, align 4
+    %13 = load i32* %3, align 4
+    %14 = load i32* %5, align 4
+    %15 = sub i32 %14, 1
+    call void @quicksort (i32 %13,i32 %15)
+    %16 = load i32* %5, align 4
+    %17 = add i32 %16, 1
+    %18 = load i32* %4, align 4
+    call void @quicksort (i32 %17,i32 %18)
+    jump label %19
+
+%19:
+    ret void
+
+}
+
+define  void @write_hex_number_to_stdout(i64 %0)  {
+%1:
+    %2 = alloca i64, align 8
+    %3 = alloca i32, align 4
+    store i64 %0, i64* %2, align 8
+    store i32 15, i32* %3, align 4
+    jump label %4
+
+%4:
+    %5 = load i32* %3, align 4
+    %6 = icmp sge i32 %5, 0
+    br i1 %6, label %7, label %21
+
+%7:
+    %8 = load i64* %2, align 8
+    %9 = load i32* %3, align 4
+    %10 = mul nsw i32 %9, 4
+    %11 = zext i32 %10 to i64
+    %12 = lshr i64 %8, %11
+    %13 = and i64 %12, 15
+    %14 = getelementpointer inbounds [17 x i8]* @digits,i64 0,i64 %13
+    %15 = load i8* %14, align 1
+    %16 = sext i8 %15 to i32
+    %17 = call i32 @putchar (i32 %16)
+    jump label %18
+
+%18:
+    %19 = load i32* %3, align 4
+    %20 = add nsw i32 %19, 4294967295
+    store i32 %20, i32* %3, align 4
+    jump label %4
+
+%21:
+    %22 = call i32 @putchar (i32 10)
+    ret void
+
+}
+
+define  i32 @putchar(i32 %0)  {
+}
+
+define  void @run_test()  {
+%0:
+    call void @quicksort (i32 0,i32 9)
+    ret void
+
+}
+
+define  i32 @main()  {
+%0:
+    %1 = alloca i32, align 4
+    %2 = alloca i32, align 4
+    store i32 0, i32* %1, align 4
+    call void @run_test ()
+    store i32 0, i32* %2, align 4
+    jump label %3
+
+%3:
+    %4 = load i32* %2, align 4
+    %5 = icmp ult i32 %4, 10
+    br i1 %5, label %6, label %14
+
+%6:
+    %7 = load i32* %2, align 4
+    %8 = zext i32 %7 to i64
+    %9 = getelementpointer inbounds [10 x i64]* @arr,i64 0,i64 %8
+    %10 = load i64* %9, align 8
+    call void @write_hex_number_to_stdout (i64 %10)
+    jump label %11
+
+%11:
+    %12 = load i32* %2, align 4
+    %13 = add i32 %12, 1
+    store i32 %13, i32* %2, align 4
+    jump label %3
+
+%14:
+    ret i32 0
+
+}
+
+
+ALLOCA 0xfffffffffffffffc 4
+ALLOCA 0xfffffffffffffff8 4
+ALLOCA 0xfffffffffffffff4 4
+STORE  0xfffffffffffffffc 0x0
+STORE  0xfffffffffffffff8 0x9
+LOAD   0xfffffffffffffffc 0x0
+LOAD   0xfffffffffffffff8 0x9
+LOAD   0xfffffffffffffffc 0x0
+LOAD   0xfffffffffffffff8 0x9
+ALLOCA 0xfffffffffffffff0 4
+ALLOCA 0xffffffffffffffec 4
+ALLOCA 0xffffffffffffffc0 8
+ALLOCA 0xffffffffffffffbc 4
+ALLOCA 0xffffffffffffffb8 4
+ALLOCA 0xffffffffffffff80 8
+STORE  0xfffffffffffffff0 0x0
+STORE  0xffffffffffffffec 0x9
+LOAD   0xfffffffffffffff0 0x0
+LOAD   0x202000 0x4f53
+STORE  0xffffffffffffffc0 0x4f53
+LOAD   0xfffffffffffffff0 0x0
+STORE  0xffffffffffffffbc 0x0
+LOAD   0xfffffffffffffff0 0x0
+STORE  0xffffffffffffffb8 0x1
+LOAD   0xffffffffffffffb8 0x1
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x1
+LOAD   0x202040 0xe82
+STORE  0xffffffffffffff80 0xe82
+LOAD   0xffffffffffffff80 0xe82
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x0
+STORE  0xffffffffffffffbc 0x1
+LOAD   0xffffffffffffffbc 0x1
+LOAD   0x202040 0xe82
+LOAD   0xffffffffffffffb8 0x1
+STORE  0x202040 0xe82
+LOAD   0xffffffffffffff80 0xe82
+LOAD   0xffffffffffffffbc 0x1
+STORE  0x202040 0xe82
+LOAD   0xffffffffffffffb8 0x1
+STORE  0xffffffffffffffb8 0x2
+LOAD   0xffffffffffffffb8 0x2
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x2
+LOAD   0x202080 0x3086
+STORE  0xffffffffffffff80 0x3086
+LOAD   0xffffffffffffff80 0x3086
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x1
+STORE  0xffffffffffffffbc 0x2
+LOAD   0xffffffffffffffbc 0x2
+LOAD   0x202080 0x3086
+LOAD   0xffffffffffffffb8 0x2
+STORE  0x202080 0x3086
+LOAD   0xffffffffffffff80 0x3086
+LOAD   0xffffffffffffffbc 0x2
+STORE  0x202080 0x3086
+LOAD   0xffffffffffffffb8 0x2
+STORE  0xffffffffffffffb8 0x3
+LOAD   0xffffffffffffffb8 0x3
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x3
+LOAD   0x2020c0 0x3ffe
+STORE  0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x2
+STORE  0xffffffffffffffbc 0x3
+LOAD   0xffffffffffffffbc 0x3
+LOAD   0x2020c0 0x3ffe
+LOAD   0xffffffffffffffb8 0x3
+STORE  0x2020c0 0x3ffe
+LOAD   0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffffbc 0x3
+STORE  0x2020c0 0x3ffe
+LOAD   0xffffffffffffffb8 0x3
+STORE  0xffffffffffffffb8 0x4
+LOAD   0xffffffffffffffb8 0x4
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x4
+LOAD   0x202100 0x722e
+STORE  0xffffffffffffff80 0x722e
+LOAD   0xffffffffffffff80 0x722e
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffb8 0x4
+STORE  0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0x202140 0x4a17
+STORE  0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x3
+STORE  0xffffffffffffffbc 0x4
+LOAD   0xffffffffffffffbc 0x4
+LOAD   0x202100 0x722e
+LOAD   0xffffffffffffffb8 0x5
+STORE  0x202140 0x722e
+LOAD   0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffffbc 0x4
+STORE  0x202100 0x4a17
+LOAD   0xffffffffffffffb8 0x5
+STORE  0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x6
+LOAD   0x202180 0x59b2
+STORE  0xffffffffffffff80 0x59b2
+LOAD   0xffffffffffffff80 0x59b2
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffb8 0x6
+STORE  0xffffffffffffffb8 0x7
+LOAD   0xffffffffffffffb8 0x7
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x7
+LOAD   0x2021c0 0x6a09
+STORE  0xffffffffffffff80 0x6a09
+LOAD   0xffffffffffffff80 0x6a09
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffb8 0x7
+STORE  0xffffffffffffffb8 0x8
+LOAD   0xffffffffffffffb8 0x8
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x8
+LOAD   0x202200 0x2ff3
+STORE  0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x4
+STORE  0xffffffffffffffbc 0x5
+LOAD   0xffffffffffffffbc 0x5
+LOAD   0x202140 0x722e
+LOAD   0xffffffffffffffb8 0x8
+STORE  0x202200 0x722e
+LOAD   0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffffbc 0x5
+STORE  0x202140 0x2ff3
+LOAD   0xffffffffffffffb8 0x8
+STORE  0xffffffffffffffb8 0x9
+LOAD   0xffffffffffffffb8 0x9
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffb8 0x9
+LOAD   0x202240 0x1209
+STORE  0xffffffffffffff80 0x1209
+LOAD   0xffffffffffffff80 0x1209
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x5
+STORE  0xffffffffffffffbc 0x6
+LOAD   0xffffffffffffffbc 0x6
+LOAD   0x202180 0x59b2
+LOAD   0xffffffffffffffb8 0x9
+STORE  0x202240 0x59b2
+LOAD   0xffffffffffffff80 0x1209
+LOAD   0xffffffffffffffbc 0x6
+STORE  0x202180 0x1209
+LOAD   0xffffffffffffffb8 0x9
+STORE  0xffffffffffffffb8 0xa
+LOAD   0xffffffffffffffb8 0xa
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xffffffffffffffbc 0x6
+LOAD   0x202180 0x1209
+LOAD   0xfffffffffffffff0 0x0
+STORE  0x202000 0x1209
+LOAD   0xffffffffffffffc0 0x4f53
+LOAD   0xffffffffffffffbc 0x6
+STORE  0x202180 0x4f53
+LOAD   0xffffffffffffffbc 0x6
+STORE  0xfffffffffffffff4 0x6
+LOAD   0xfffffffffffffffc 0x0
+LOAD   0xfffffffffffffff4 0x6
+ALLOCA 0xfffffffffffffff0 4
+ALLOCA 0xffffffffffffffec 4
+ALLOCA 0xffffffffffffffe8 4
+STORE  0xfffffffffffffff0 0x0
+STORE  0xffffffffffffffec 0x5
+LOAD   0xfffffffffffffff0 0x0
+LOAD   0xffffffffffffffec 0x5
+LOAD   0xfffffffffffffff0 0x0
+LOAD   0xffffffffffffffec 0x5
+ALLOCA 0xffffffffffffffe4 4
+ALLOCA 0xffffffffffffffe0 4
+ALLOCA 0xffffffffffffffc0 8
+ALLOCA 0xffffffffffffffbc 4
+ALLOCA 0xffffffffffffffb8 4
+ALLOCA 0xffffffffffffff80 8
+STORE  0xffffffffffffffe4 0x0
+STORE  0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffe4 0x0
+LOAD   0x202000 0x1209
+STORE  0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffe4 0x0
+STORE  0xffffffffffffffbc 0x0
+LOAD   0xffffffffffffffe4 0x0
+STORE  0xffffffffffffffb8 0x1
+LOAD   0xffffffffffffffb8 0x1
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffb8 0x1
+LOAD   0x202040 0xe82
+STORE  0xffffffffffffff80 0xe82
+LOAD   0xffffffffffffff80 0xe82
+LOAD   0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffbc 0x0
+STORE  0xffffffffffffffbc 0x1
+LOAD   0xffffffffffffffbc 0x1
+LOAD   0x202040 0xe82
+LOAD   0xffffffffffffffb8 0x1
+STORE  0x202040 0xe82
+LOAD   0xffffffffffffff80 0xe82
+LOAD   0xffffffffffffffbc 0x1
+STORE  0x202040 0xe82
+LOAD   0xffffffffffffffb8 0x1
+STORE  0xffffffffffffffb8 0x2
+LOAD   0xffffffffffffffb8 0x2
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffb8 0x2
+LOAD   0x202080 0x3086
+STORE  0xffffffffffffff80 0x3086
+LOAD   0xffffffffffffff80 0x3086
+LOAD   0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffb8 0x2
+STORE  0xffffffffffffffb8 0x3
+LOAD   0xffffffffffffffb8 0x3
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffb8 0x3
+LOAD   0x2020c0 0x3ffe
+STORE  0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffb8 0x3
+STORE  0xffffffffffffffb8 0x4
+LOAD   0xffffffffffffffb8 0x4
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffb8 0x4
+LOAD   0x202100 0x4a17
+STORE  0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffb8 0x4
+STORE  0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0x202140 0x2ff3
+STORE  0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffb8 0x5
+STORE  0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffbc 0x1
+LOAD   0x202040 0xe82
+LOAD   0xffffffffffffffe4 0x0
+STORE  0x202000 0xe82
+LOAD   0xffffffffffffffc0 0x1209
+LOAD   0xffffffffffffffbc 0x1
+STORE  0x202040 0x1209
+LOAD   0xffffffffffffffbc 0x1
+STORE  0xffffffffffffffe8 0x1
+LOAD   0xfffffffffffffff0 0x0
+LOAD   0xffffffffffffffe8 0x1
+ALLOCA 0xffffffffffffffe4 4
+ALLOCA 0xffffffffffffffe0 4
+ALLOCA 0xffffffffffffffdc 4
+STORE  0xffffffffffffffe4 0x0
+STORE  0xffffffffffffffe0 0x0
+LOAD   0xffffffffffffffe4 0x0
+LOAD   0xffffffffffffffe0 0x0
+LOAD   0xffffffffffffffe8 0x1
+LOAD   0xffffffffffffffec 0x5
+ALLOCA 0xffffffffffffffe4 4
+ALLOCA 0xffffffffffffffe0 4
+ALLOCA 0xffffffffffffffdc 4
+STORE  0xffffffffffffffe4 0x2
+STORE  0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffe4 0x2
+LOAD   0xffffffffffffffe0 0x5
+LOAD   0xffffffffffffffe4 0x2
+LOAD   0xffffffffffffffe0 0x5
+ALLOCA 0xffffffffffffffd8 4
+ALLOCA 0xffffffffffffffd4 4
+ALLOCA 0xffffffffffffffc0 8
+ALLOCA 0xffffffffffffffbc 4
+ALLOCA 0xffffffffffffffb8 4
+ALLOCA 0xffffffffffffff80 8
+STORE  0xffffffffffffffd8 0x2
+STORE  0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffd8 0x2
+LOAD   0x202080 0x3086
+STORE  0xffffffffffffffc0 0x3086
+LOAD   0xffffffffffffffd8 0x2
+STORE  0xffffffffffffffbc 0x2
+LOAD   0xffffffffffffffd8 0x2
+STORE  0xffffffffffffffb8 0x3
+LOAD   0xffffffffffffffb8 0x3
+LOAD   0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffb8 0x3
+LOAD   0x2020c0 0x3ffe
+STORE  0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffffc0 0x3086
+LOAD   0xffffffffffffffb8 0x3
+STORE  0xffffffffffffffb8 0x4
+LOAD   0xffffffffffffffb8 0x4
+LOAD   0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffb8 0x4
+LOAD   0x202100 0x4a17
+STORE  0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffff80 0x4a17
+LOAD   0xffffffffffffffc0 0x3086
+LOAD   0xffffffffffffffb8 0x4
+STORE  0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0x202140 0x2ff3
+STORE  0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffffc0 0x3086
+LOAD   0xffffffffffffffbc 0x2
+STORE  0xffffffffffffffbc 0x3
+LOAD   0xffffffffffffffbc 0x3
+LOAD   0x2020c0 0x3ffe
+LOAD   0xffffffffffffffb8 0x5
+STORE  0x202140 0x3ffe
+LOAD   0xffffffffffffff80 0x2ff3
+LOAD   0xffffffffffffffbc 0x3
+STORE  0x2020c0 0x2ff3
+LOAD   0xffffffffffffffb8 0x5
+STORE  0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffbc 0x3
+LOAD   0x2020c0 0x2ff3
+LOAD   0xffffffffffffffd8 0x2
+STORE  0x202080 0x2ff3
+LOAD   0xffffffffffffffc0 0x3086
+LOAD   0xffffffffffffffbc 0x3
+STORE  0x2020c0 0x3086
+LOAD   0xffffffffffffffbc 0x3
+STORE  0xffffffffffffffdc 0x3
+LOAD   0xffffffffffffffe4 0x2
+LOAD   0xffffffffffffffdc 0x3
+ALLOCA 0xffffffffffffffd8 4
+ALLOCA 0xffffffffffffffd4 4
+ALLOCA 0xffffffffffffffd0 4
+STORE  0xffffffffffffffd8 0x2
+STORE  0xffffffffffffffd4 0x2
+LOAD   0xffffffffffffffd8 0x2
+LOAD   0xffffffffffffffd4 0x2
+LOAD   0xffffffffffffffdc 0x3
+LOAD   0xffffffffffffffe0 0x5
+ALLOCA 0xffffffffffffffd8 4
+ALLOCA 0xffffffffffffffd4 4
+ALLOCA 0xffffffffffffffd0 4
+STORE  0xffffffffffffffd8 0x4
+STORE  0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffd8 0x4
+LOAD   0xffffffffffffffd4 0x5
+LOAD   0xffffffffffffffd8 0x4
+LOAD   0xffffffffffffffd4 0x5
+ALLOCA 0xffffffffffffffcc 4
+ALLOCA 0xffffffffffffffc8 4
+ALLOCA 0xffffffffffffffc0 8
+ALLOCA 0xffffffffffffffbc 4
+ALLOCA 0xffffffffffffffb8 4
+ALLOCA 0xffffffffffffff80 8
+STORE  0xffffffffffffffcc 0x4
+STORE  0xffffffffffffffc8 0x5
+LOAD   0xffffffffffffffcc 0x4
+LOAD   0x202100 0x4a17
+STORE  0xffffffffffffffc0 0x4a17
+LOAD   0xffffffffffffffcc 0x4
+STORE  0xffffffffffffffbc 0x4
+LOAD   0xffffffffffffffcc 0x4
+STORE  0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0xffffffffffffffc8 0x5
+LOAD   0xffffffffffffffb8 0x5
+LOAD   0x202140 0x3ffe
+STORE  0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffffc0 0x4a17
+LOAD   0xffffffffffffffbc 0x4
+STORE  0xffffffffffffffbc 0x5
+LOAD   0xffffffffffffffbc 0x5
+LOAD   0x202140 0x3ffe
+LOAD   0xffffffffffffffb8 0x5
+STORE  0x202140 0x3ffe
+LOAD   0xffffffffffffff80 0x3ffe
+LOAD   0xffffffffffffffbc 0x5
+STORE  0x202140 0x3ffe
+LOAD   0xffffffffffffffb8 0x5
+STORE  0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffb8 0x6
+LOAD   0xffffffffffffffc8 0x5
+LOAD   0xffffffffffffffbc 0x5
+LOAD   0x202140 0x3ffe
+LOAD   0xffffffffffffffcc 0x4
+STORE  0x202100 0x3ffe
+LOAD   0xffffffffffffffc0 0x4a17
+LOAD   0xffffffffffffffbc 0x5
+STORE  0x202140 0x4a17
+LOAD   0xffffffffffffffbc 0x5
+STORE  0xffffffffffffffd0 0x5
+LOAD   0xffffffffffffffd8 0x4
+LOAD   0xffffffffffffffd0 0x5
+ALLOCA 0xffffffffffffffcc 4
+ALLOCA 0xffffffffffffffc8 4
+ALLOCA 0xffffffffffffffc4 4
+STORE  0xffffffffffffffcc 0x4
+STORE  0xffffffffffffffc8 0x4
+LOAD   0xffffffffffffffcc 0x4
+LOAD   0xffffffffffffffc8 0x4
+LOAD   0xffffffffffffffd0 0x5
+LOAD   0xffffffffffffffd4 0x5
+ALLOCA 0xffffffffffffffcc 4
+ALLOCA 0xffffffffffffffc8 4
+ALLOCA 0xffffffffffffffc4 4
+STORE  0xffffffffffffffcc 0x6
+STORE  0xffffffffffffffc8 0x5
+LOAD   0xffffffffffffffcc 0x6
+LOAD   0xffffffffffffffc8 0x5
+LOAD   0xfffffffffffffff4 0x6
+LOAD   0xfffffffffffffff8 0x9
+ALLOCA 0xfffffffffffffff0 4
+ALLOCA 0xffffffffffffffec 4
+ALLOCA 0xffffffffffffffe8 4
+STORE  0xfffffffffffffff0 0x7
+STORE  0xffffffffffffffec 0x9
+LOAD   0xfffffffffffffff0 0x7
+LOAD   0xffffffffffffffec 0x9
+LOAD   0xfffffffffffffff0 0x7
+LOAD   0xffffffffffffffec 0x9
+ALLOCA 0xffffffffffffffe4 4
+ALLOCA 0xffffffffffffffe0 4
+ALLOCA 0xffffffffffffffc0 8
+ALLOCA 0xffffffffffffffbc 4
+ALLOCA 0xffffffffffffffb8 4
+ALLOCA 0xffffffffffffff80 8
+STORE  0xffffffffffffffe4 0x7
+STORE  0xffffffffffffffe0 0x9
+LOAD   0xffffffffffffffe4 0x7
+LOAD   0x2021c0 0x6a09
+STORE  0xffffffffffffffc0 0x6a09
+LOAD   0xffffffffffffffe4 0x7
+STORE  0xffffffffffffffbc 0x7
+LOAD   0xffffffffffffffe4 0x7
+STORE  0xffffffffffffffb8 0x8
+LOAD   0xffffffffffffffb8 0x8
+LOAD   0xffffffffffffffe0 0x9
+LOAD   0xffffffffffffffb8 0x8
+LOAD   0x202200 0x722e
+STORE  0xffffffffffffff80 0x722e
+LOAD   0xffffffffffffff80 0x722e
+LOAD   0xffffffffffffffc0 0x6a09
+LOAD   0xffffffffffffffb8 0x8
+STORE  0xffffffffffffffb8 0x9
+LOAD   0xffffffffffffffb8 0x9
+LOAD   0xffffffffffffffe0 0x9
+LOAD   0xffffffffffffffb8 0x9
+LOAD   0x202240 0x59b2
+STORE  0xffffffffffffff80 0x59b2
+LOAD   0xffffffffffffff80 0x59b2
+LOAD   0xffffffffffffffc0 0x6a09
+LOAD   0xffffffffffffffbc 0x7
+STORE  0xffffffffffffffbc 0x8
+LOAD   0xffffffffffffffbc 0x8
+LOAD   0x202200 0x722e
+LOAD   0xffffffffffffffb8 0x9
+STORE  0x202240 0x722e
+LOAD   0xffffffffffffff80 0x59b2
+LOAD   0xffffffffffffffbc 0x8
+STORE  0x202200 0x59b2
+LOAD   0xffffffffffffffb8 0x9
+STORE  0xffffffffffffffb8 0xa
+LOAD   0xffffffffffffffb8 0xa
+LOAD   0xffffffffffffffe0 0x9
+LOAD   0xffffffffffffffbc 0x8
+LOAD   0x202200 0x59b2
+LOAD   0xffffffffffffffe4 0x7
+STORE  0x2021c0 0x59b2
+LOAD   0xffffffffffffffc0 0x6a09
+LOAD   0xffffffffffffffbc 0x8
+STORE  0x202200 0x6a09
+LOAD   0xffffffffffffffbc 0x8
+STORE  0xffffffffffffffe8 0x8
+LOAD   0xfffffffffffffff0 0x7
+LOAD   0xffffffffffffffe8 0x8
+ALLOCA 0xffffffffffffffe4 4
+ALLOCA 0xffffffffffffffe0 4
+ALLOCA 0xffffffffffffffdc 4
+STORE  0xffffffffffffffe4 0x7
+STORE  0xffffffffffffffe0 0x7
+LOAD   0xffffffffffffffe4 0x7
+LOAD   0xffffffffffffffe0 0x7
+LOAD   0xffffffffffffffe8 0x8
+LOAD   0xffffffffffffffec 0x9
+ALLOCA 0xffffffffffffffe4 4
+ALLOCA 0xffffffffffffffe0 4
+ALLOCA 0xffffffffffffffdc 4
+STORE  0xffffffffffffffe4 0x9
+STORE  0xffffffffffffffe0 0x9
+LOAD   0xffffffffffffffe4 0x9
+LOAD   0xffffffffffffffe0 0x9
