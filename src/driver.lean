@@ -22,7 +22,10 @@ def readmain (xs : List String) : IO UInt32 := do
 
   IO.println (pp.render (pp_module m));
 
-  let st0 := initializeState m dl;
+  st0 <- runInitializers m dl 
+             [(symbol.mk "arr", bv.from_nat 64 0x202000) ];
+
+  --let st0 := initializeState m dl;
 
   -- let res :=
   --    sim.runFunc (symbol.mk "add_offset")
@@ -32,8 +35,8 @@ def readmain (xs : List String) : IO UInt32 := do
   --            st0;
 
   res <-
-     sim.runFuncPrintTrace (symbol.mk "fib")
-             [ sim.value.bv 64 (bv.from_nat 64 7)
+     sim.runFuncPrintTrace (symbol.mk "run_test")
+             [
              ]
              st0;
 

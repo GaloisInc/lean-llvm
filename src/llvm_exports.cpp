@@ -239,6 +239,19 @@ llvm::Function* toFunction(b_obj_arg o) {
   return llvm::dyn_cast<llvm::Function>(toValue(o));
 }
 
+////////////////////////////////////////////////////////////////////////
+// Global Variables
+
+// Allocate a global variable object (the parent lifetime should exceed this objects).
+obj_res allocGlobalVarObj(obj_arg parent, llvm::GlobalVariable* gv) {
+  return allocValueObj( parent, gv );
+}
+
+llvm::GlobalVariable* toGlobalVar(b_obj_arg o) {
+  return llvm::dyn_cast<llvm::GlobalVariable>(toValue(o));
+}
+
+
 ////////////////////////////////////////////////////////////////////
 // Module
 
@@ -959,7 +972,7 @@ obj_res lean_llvm_getFunctionArgs(b_obj_arg f, obj_arg r) {
 }
 
 obj_res lean_llvm_getReturnType(b_obj_arg f, obj_arg r) {
-    return set_io_result(r, allocTypeObj(toFunction(f)->getReturnType()));
+  return set_io_result(r, allocTypeObj(toFunction(f)->getReturnType()));
 }
 
 obj_res lean_llvm_getBasicBlockArray(b_obj_arg f, obj_arg r) {
@@ -973,6 +986,27 @@ obj_res lean_llvm_getBasicBlockArray(b_obj_arg f, obj_arg r) {
       *(p++) = allocBasicBlockObj(parent, &bb);
     }
     return set_io_result(r, arr);
+}
+
+obj_res lean_llvm_getGlobalVarData( b_obj_arg gv_obj, obj_arg r ) {
+  auto gv = toGlobalVar(gv_obj);
+  auto parent = valueParent(gv_obj);
+  if( !gv ) {
+    return set_io_result( r, mk_option_none() );
+  }
+  
+  auto nm = mk_string(gv->getValueName()->getKey());
+
+  obj_res val;
+  if( gv->hasInitializer() ) {
+    val = mk_option_some( allocValueObj( parent, gv->getInitializer() ));
+  } else {
+    val = mk_option_none();
+  }
+
+  unsigned align = gv->getAlignment();
+
+  return set_io_result( r, mk_option_some( mk_pair( nm, mk_pair( val, box(align) ) )));
 }
 }
 
@@ -1041,6 +1075,19 @@ obj_res lean_llvm_getFunctionArray (b_obj_arg m, obj_arg r) {
     auto p = array_cptr(arr);
     for (llvm::Function& f : flist) {
 	*(p++) = allocFunctionObj(m, &f);
+    }
+
+    return set_io_result(r, arr);
+}
+
+obj_res lean_llvm_getGlobalArray (b_obj_arg m, obj_arg r) {
+    llvm::Module::GlobalListType& gvlist = toModule(m)->getGlobalList();
+
+    size_t sz = gvlist.size();
+    obj_res arr = alloc_array(sz, sz);
+    auto p = array_cptr(arr);
+    for (llvm::GlobalVariable& gv : gvlist) {
+	*(p++) = allocGlobalVarObj(m, &gv);
     }
 
     return set_io_result(r, arr);
@@ -1120,6 +1167,28 @@ obj_res lean_llvm_getConstExprData (b_obj_arg c_obj, obj_arg r ) {
     }
   }
   return set_io_result( r, mk_option_some( mk_pair( box(opcode), arr )) );
+}
+
+obj_res lean_llvm_getConstArrayData( b_obj_arg c_obj, obj_arg r ) {
+  auto parent = valueParent( c_obj );
+  auto carr = llvm::dyn_cast<llvm::ConstantDataSequential>(toValue(c_obj));
+
+  if( !carr ) {
+    return set_io_result( r, mk_option_none() );
+  }
+
+  auto elty = allocTypeObj(carr->getElementType());
+
+  unsigned sz = carr->getNumElements();
+  obj_res arr = alloc_array( sz, sz );
+  auto p = array_cptr(arr);
+
+  for( unsigned i = 0; i<sz; i++ ) {
+    auto elem = carr->getElementAsConstant( i );
+    *(p++) = allocValueObj( parent, elem );
+  }
+
+  return set_io_result( r, mk_option_some( mk_pair( elty, arr )));
 }
 
 

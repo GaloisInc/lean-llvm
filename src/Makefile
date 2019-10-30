@@ -12,8 +12,11 @@ LEAN_LIBRARY:=$(LEAN_HOME)/lib/lean/library
 LEAN_PATH   :=$(PWD):$(LEAN_LIBRARY)
 
 LLVM_CONFIG  :=$(LLVM_HOME)/bin/llvm-config
-CLANG        :=$(LLVM_HOME)/bin/clang
-CLANGXX      :=$(LLVM_HOME)/bin/clang++
+#CLANG        :=$(LLVM_HOME)/bin/clang
+#CLANGXX      :=$(LLVM_HOME)/bin/clang++
+
+CLANG:=clang
+CLANGXX:=clang++
 
 LLVM_INCLUDE :=$(shell $(LLVM_CONFIG) --includedir)
 LLVM_LIB     :=$(shell $(LLVM_CONFIG) --libdir)
@@ -21,8 +24,8 @@ LLVM_LIBS    :=$(shell $(LLVM_CONFIG) --libs)
 
 CLANG_LIBS := -lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver -lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangSema -lclangSerialization
 
-C_FLAGS=-O1 -g $(shell $(LLVM_CONFIG) --cflags)
-CXX_FLAGS=-O1 -g $(shell $(LLVM_CONFIG) --cxxflags) -stdlib=libc++ -std=c++14 
+C_FLAGS=-O1 -g -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include $(shell $(LLVM_CONFIG) --cflags) 
+CXX_FLAGS=-O1 -g -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include $(shell $(LLVM_CONFIG) --cxxflags) -stdlib=libc++ -std=c++14 
 
 SOURCES :=\
   alignment.lean\
@@ -66,10 +69,10 @@ orc_test : build/llvm_ffi.o build/llvm_codes.o build/clang_ffi.o build/llvm_expo
 	$(LEANC) -o $@ -L$(LLVM_LIB) $(LLVM_LIBS) $(CLANG_LIBS) -lz -ltermcap $^
 
 build/%.o : build/%.c
-	$(LEANC) $(C_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+	$(LEANC) $(C_FLAGS) -o $@ -c -I$(LEAN_INCLUDE) $<
 
 build/%.o : %.cpp
-	$(CLANGXX) $(CXX_FLAGS) -o $@ -c -I$(LLVM_INCLUDE) -I$(LEAN_INCLUDE) $<
+	$(CLANGXX) $(CXX_FLAGS) -I$(LEAN_INCLUDE) -o $@ -c $<
 
 build/%.c: %.lean %.olean
 	LEAN_PATH=$(LEAN_PATH) $(LEAN) -c $@ $<

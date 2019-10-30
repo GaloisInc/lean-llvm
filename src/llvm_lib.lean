@@ -189,6 +189,9 @@ structure value_context :=
   (imap : instrMap)
   (bmap : bbMap)
 
+def empty_value_context := value_context.mk Array.empty RBMap.empty RBMap.empty
+
+
 def extractArgs (fn : ffi.Function) : extract (Nat × Array (typed ident)) :=
   do rawargs <- monadLift (ffi.getFunctionArgs fn);
      Array.miterate rawargs (0, Array.empty) (λ _ a b => do
@@ -233,7 +236,7 @@ def computeNumberings (c0:Nat) (fn:ffi.Function) : extract (bbMap × instrMap) :
                bmap' <- pure (RBMap.insert bmap rawbb blab);
                (c'', imap') <- computeInstructionNumbering rawbb c' imap;
                pure (c'',bmap',imap')
-         );
+            );
      pure (finalbmap, finalimap).
 
 partial def extractConstant : ffi.Constant -> extract value
@@ -262,6 +265,15 @@ partial def extractConstant : ffi.Constant -> extract value
            | none   => throw (IO.userError "expected global variable")
 
      | code.const.ConstantPointerNull => pure value.null
+
+     | code.const.ConstantDataArray =>
+        do md <- monadLift (ffi.getConstArrayData rawc);
+           match md with
+           | none => throw (IO.userError "expected constant array")
+           | some (elty, cs) => 
+                do elty' <- extractType elty;
+                   cs' <- cs.mmap extractConstant;
+                   pure (value.array elty' cs')
 
      | code.const.ConstantExpr =>
         do md <- monadLift (ffi.getConstExprData rawc);
@@ -590,10 +602,25 @@ def extractDataLayout (m:ffi.Module) : IO (List layout_spec) :=
           throw (IO.userError ("Could not parse data layout string: " ++ dlstr ++ "  " ++ stk.repr ++ "  " ++ str'))
      | (Sum.inr dl) => pure dl.
 
+def extractGlobal (g:ffi.GlobalVar) : extract global :=
+  do tp <- monadLift (ffi.getValueType g) >>= extractType;
+     match tp with
+     | llvm_type.ptr_to valtp =>
+       do md <- monadLift (ffi.getGlobalVarData g);
+          match md with
+          | none => throw (IO.userError "Expected global variable")
+          | some (nm, val, align) =>
+              do val' <- val.mmap (extractValue empty_value_context);
+                 -- TODO!
+                 let attrs := global_attrs.mk none none false;
+                 pure (global.mk (symbol.mk nm) attrs valtp val' align (strmap_empty _))
+     | _ => throw (IO.userError ("Expected pointer type for global but got: " ++ (pp.render (pp_type tp))))
+
 def extractModule (m:ffi.Module) : extract module :=
   do nm <- monadLift (ffi.getModuleIdentifier m);
      dl <- monadLift (extractDataLayout m);
      fns <- monadLift (ffi.getFunctionArray m) >>= Array.mmap extractFunction;
+     gs <- monadLift (ffi.getGlobalArray m) >>= Array.mmap extractGlobal;
      pure (module.mk
              (some nm)
              dl
@@ -601,7 +628,7 @@ def extractModule (m:ffi.Module) : extract module :=
              Array.empty -- named_md TODO
              Array.empty -- unnamed_md TODO
              (strmap_empty _) -- comdat TODO
-             Array.empty -- globals TODO
+             gs
              Array.empty -- declares TODO
              fns -- defines
              Array.empty -- inline ASM TODO,

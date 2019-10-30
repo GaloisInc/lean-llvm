@@ -68,26 +68,25 @@ def maxAlignment (x y:alignment) : alignment :=
 
 instance alignment.inh : Inhabited alignment := ⟨noAlignment⟩.
 
+partial def lg2aux : Nat → Nat → Nat
+| r, 0 => r
+| r, n => lg2aux (r+1) (n/2)
+
+def toAlignment (x:bytes) : Option alignment :=
+  let l := lg2aux 0 (x.val /2);
+  if 2^l = x.val then some (alignment.mk l) else none.
+
+def fromAlignment (x:alignment) : bytes := bytes.mk (2^(x.exponent)).
+
 def nextMultiple (x:Nat) (n:Nat) : Nat := ((x + n - 1)/n) * n
 
 def prevMultiple (x:Nat) (n:Nat) : Nat := (x/n) * n
 
 def padToAlignment (x:bytes) (al:alignment) : bytes :=
-  bytes.mk (nextMultiple x.val (2^al.exponent)).
+  bytes.mk (nextMultiple x.val (fromAlignment al).val)
 
 def padDownToAlignment (x:bytes) (al:alignment) : bytes :=
-  bytes.mk (prevMultiple x.val (2^al.exponent)).
-
-partial def lg2aux : Nat → Nat → Nat
-| r, 0 => r
-| r, n => lg2aux (r+1) (n/2)
-
-def toAlignment (x:Nat) : Option alignment :=
-  let l := lg2aux 0 (x/2);
-  if 2^l = x then some (alignment.mk l) else none.
-
-def fromAlignment (x:alignment) : Nat := 2^x.exponent.
-
+  bytes.mk (prevMultiple x.val (fromAlignment al).val)
 
 @[reducible]
 def alignInfo := @RBMap Nat alignment (λx y => decide (x < y)).

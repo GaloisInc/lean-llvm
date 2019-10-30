@@ -12,33 +12,6 @@ namespace sim.
 
 def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 
-def eval_mem_type (t:llvm_type) : sim mem_type :=
-  do st <- sim.getState;
-     (match lift_mem_type st.dl st.mod.types t with
-      | none => throw (IO.userError ("could not lift type: " ++ pp.render (pp_type t)))
-      | (some mt) => pure mt)
-
-
-def eval : mem_type → llvm.value → sim sim.value
-| _,              value.ident i    => sim.lookupReg i
-| mem_type.int w, value.integer n  => pure (value.bv w (bv.from_int w n))
-| mem_type.int w, value.bool true  => pure (value.bv w (bv.from_int w 1))
-| mem_type.int w, value.bool false => pure (value.bv w (bv.from_int w 0))
-| mem_type.int w, value.null       => pure (value.bv w (bv.from_int w 0))
-| mem_type.int w, value.zero_init  => pure (value.bv w (bv.from_int w 0))
-| mem_type.int w, value.undef      => pure (value.bv w (bv.from_int w 0)) --???
-| mem_type.int 64, value.symbol s  =>
-   do st <- sim.getState;
-      match st.symmap.find s with
-      | (some ptr) => pure (value.bv 64 ptr)
-      | none => throw (IO.userError ("could not resolve symbol: " ++ s.symbol))
-| _, _ => throw (IO.userError "bad value/type in evaluation")
-
-
-def eval_typed (tv:typed llvm.value) : sim sim.value :=
-  do mt <- eval_mem_type tv.type;
-     eval mt tv.value.
-
 def int_op (f:∀w, bv w -> bv w -> sim sim.value) : sim.value -> sim.value -> sim sim.value
 | value.bv wx vx, value.bv wy vy =>
     match decEq wy wx with
@@ -130,7 +103,7 @@ def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → s
 | base, [], _ => pure base
 | base, value.bv w' v :: offsets, ty =>
     match ty with
-    | mem_type.array n ty' =>
+    | mem_type.array _n ty' =>
          if (w = w') then
            let (sz,a) := mem_type.szAndAlign dl ty';
            let sz' := padToAlignment sz a;
@@ -192,7 +165,7 @@ def evalInstr : instruction → sim (Option sim.value)
         if cv then pure (some xv) else pure (some yv)
 
 | instruction.call _tail _rettp fn args =>
-     do fnv <- eval (mem_type.int 64) fn;
+     do fnv <- eval (mem_type.ptr sym_type.void) fn; -- TODO? more accurate type?
         st <- sim.getState;
         match fnv with
         | value.bv 64 bv =>
@@ -250,7 +223,7 @@ def evalInstr : instruction → sim (Option sim.value)
        a <- match oalign with
             | none => pure (mt.alignment dl)
             | some align =>
-              match toAlignment align with
+              match toAlignment (bytes.mk align) with
               | none => throw (IO.userError ("illegal alignment value in alloca: " ++ toString align))
               | some a => pure (maxAlignment (mt.alignment dl) a);
        ptr <- (do st <- sim.getState;

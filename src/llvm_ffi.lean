@@ -18,6 +18,7 @@ def Function := Value
 def BasicBlock := Value
 def Instruction := Value
 def Constant := Value
+def GlobalVar := Value
 
 constant Module := Unit
 constant MemoryBuffer := Unit
@@ -122,6 +123,9 @@ def getConstIntData : @& Constant -> IO (Option (Nat × Nat)) := default _
 @[extern 2 "lean_llvm_getConstExprData"]
 def getConstExprData : @& Constant -> IO (Option (llvm.code.instr × Array Constant)) := default _
 
+@[extern 2 "lean_llvm_getConstArrayData"]
+def getConstArrayData : @& Constant -> IO (Option (Type_ × Array Constant)) := default _
+
 ------------------------------------------------------------------------
 -- Instruction
 
@@ -218,6 +222,12 @@ def getReturnType : @& Function -> IO Type_ := default _
 def getBasicBlockArray : @& Function -> IO (Array BasicBlock) := default _
 
 ------------------------------------------------------------------------
+-- GlobalVar
+
+@[extern 2 "lean_llvm_getGlobalVarData"]
+def getGlobalVarData : @& GlobalVar → IO (Option (String × (Option Value × Nat))) := default _
+
+------------------------------------------------------------------------
 -- Module
 
 @[extern 3 "lean_llvm_parseBitcodeFile"]
@@ -240,6 +250,9 @@ def getModuleDataLayoutStr : @& Module → IO String := default _
 
 @[extern 2 "lean_llvm_getFunctionArray"]
 def getFunctionArray : @& Module -> IO (Array Function) := default _
+
+@[extern 2 "lean_llvm_getGlobalArray"]
+def getGlobalArray : @& Module -> IO (Array GlobalVar) := default _
 
 ------------------------------------------------------------------------
 -- Other

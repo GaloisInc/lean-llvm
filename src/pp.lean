@@ -354,10 +354,10 @@ partial def pp_value : value → doc
 | (value.symbol n)         => pp_symbol n
 | (value.const_expr e)     => pp_const_expr pp_value e
 | (value.label l)          => pp_label l
-| (value.array tp vs)      => brackets (commas (List.map (λv => pp_type tp <+> pp_value v) vs))
-| (value.vector tp vs)     => angles (commas (List.map (λv => pp_type tp <+> pp_value v) vs))
-| (value.struct fs)        => braces (commas (List.map (λ(f : typed value) => pp_type f.type <+> pp_value f.value) fs))
-| (value.packed_struct fs) => packed_braces (commas (List.map (λ(f:typed value) => pp_type f.type <+> pp_value f.value) fs))
+| (value.array tp vs)      => brackets (commas (List.map (λv => pp_type tp <+> pp_value v) vs.toList))
+| (value.vector tp vs)     => angles (commas (List.map (λv => pp_type tp <+> pp_value v) vs.toList))
+| (value.struct fs)        => braces (commas (List.map (λ(f : typed value) => pp_type f.type <+> pp_value f.value) fs.toList))
+| (value.packed_struct fs) => packed_braces (commas (List.map (λ(f:typed value) => pp_type f.type <+> pp_value f.value) fs.toList))
 | (value.md md)            => pp_md pp_value md
 .
 
