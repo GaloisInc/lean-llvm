@@ -1,0 +1,23 @@
+HERE := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+LOCALFILES :=\
+  Alignment.lean\
+  AST.lean\
+  BV.lean\
+  PP.lean\
+  DataLayout.lean\
+  LLVMCodes.lean\
+  LLVMFFI.lean \
+  LLVMLib.lean\
+  LLVMOutput.lean\
+  Memory.lean\
+  SimMonad.lean\
+  Simulate.lean\
+  Parser.lean\
+  TypeContext.lean\
+  Value.lean
+
+LEANFILES += $(patsubst %,${HERE}%,${LOCALFILES})
+LEAN_PATH := ${LEAN_PATH}:LeanLLVM=${HERE}/
+
+$(HERE)/LLVMCodes.lean : $(HERE)/LLVMCodes.lean.in
+	$(CXX) -E -P -I$(LLVM_INCLUDE) -o $@ -x c $<
