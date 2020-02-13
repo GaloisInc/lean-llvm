@@ -1,13 +1,13 @@
-import init.data.array
-import init.data.int
-import init.data.rbmap
-import init.data.string
+import Init.Data.Array
+import Init.Data.Int
+import Init.Data.RBMap
+import Init.Data.String
 
-import .ast
-import .bv
-import .pp
-import .type_context
-import .value
+import LeanLLVM.AST
+import LeanLLVM.BV
+import LeanLLVM.PP
+import LeanLLVM.TypeContext
+import LeanLLVM.Value
 
 namespace llvm.
 
@@ -71,7 +71,7 @@ structure sim (a:Type) :=
 namespace sim
 
 instance simInh {a:Type} : Inhabited (sim a) :=
-  ⟨ sim.mk (λz conts k f st => conts.kerr "black hole") ⟩
+  ⟨ sim.mk (λz conts k f st => conts.kerr (IO.userError "black hole")) ⟩
 
 instance monad : Monad sim :=
   { bind := λa b mx mf => sim.mk (λz conts k =>
@@ -146,7 +146,7 @@ partial def eval : mem_type → llvm.value → sim sim.value
       | none => throw (IO.userError ("could not resolve symbol: " ++ s.symbol))
 
 | mem_type.array _n eltp, llvm.value.array _tp vs =>
-   do vs' <- vs.mmap (eval eltp);
+   do vs' <- vs.mapM (eval eltp);
       pure (llvm.sim.value.array eltp vs')
 
 | _, v => throw (IO.userError ("bad value/type in evaluation: " ++ pp.render (pp_value v)))

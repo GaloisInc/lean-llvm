@@ -1,13 +1,13 @@
-import init.data.array
-import init.data.int
-import init.data.rbmap
-import init.system.io
+import Init.Data.Array
+import Init.Data.Int
+import Init.Data.RBMap
+import Init.System.IO
 
-import .ast
-import .pp
-import .data_layout
-import .llvm_codes
-import .llvm_ffi
+import LeanLLVM.AST
+import LeanLLVM.PP
+import LeanLLVM.DataLayout
+import LeanLLVM.LLVMCodes
+import LeanLLVM.LLVMFFI
 
 namespace llvm.
 namespace output.
@@ -50,7 +50,7 @@ instance monadExcept : MonadExcept IO.Error output :=
   , catch := λa m handle r => catch (m r) (λerr => handle err r)
   }.
 
-instance mIO : monadIO output :=
+instance mIO : MonadIO output :=
   { monadLift := λa m r => m
   }
 
@@ -110,10 +110,10 @@ partial def outputType (ctx:ffi.Context) : llvm_type → output ffi.Type_
        monadLift (ffi.newPointerType t')
 | llvm_type.fun_ty ret args varargs =>
     do ret' <- outputType ret;
-       args' <- Array.mmap outputType args;
+       args' <- Array.mapM outputType args;
        monadLift (ffi.newFunctionType ret' args' varargs)
 | llvm_type.struct packed tps =>
-    do tps' <- Array.mmap outputType tps;
+    do tps' <- Array.mapM outputType tps;
        monadLift (ffi.newLiteralStructType packed tps')
 
 def setupTypeAlias (ctx:ffi.Context) (nm:String) : output ffi.Type_ :=
@@ -126,7 +126,7 @@ def setupTypeAlias (ctx:ffi.Context) (nm:String) : output ffi.Type_ :=
 def finalizeTypeAlias (ctx:ffi.Context) (ty:ffi.Type_) : type_decl_body → output Unit
 | type_decl_body.opaque => pure ()
 | type_decl_body.defn (llvm_type.struct packed tps) =>
-     do tps' <- Array.mmap (outputType ctx) tps;
+     do tps' <- Array.mapM (outputType ctx) tps;
         monadLift (ffi.setStructTypeBody ty packed tps');
         pure ()
 | type_decl_body.defn _ => throw (IO.userError "type alias defintion must be a struct body")
@@ -138,9 +138,9 @@ def finalizeTypeAlias (ctx:ffi.Context) (ty:ffi.Type_) : type_decl_body → outp
 --
 -- This two-phase approach ensures that recursive struct groups are properly handled.
 def outputTypeAliases (ctx:ffi.Context) (tds:Array type_decl) : output Unit :=
-  do fs <- Array.mmap (λ(td:type_decl) => 
+  do fs <- Array.mapM (λ(td:type_decl) => 
               setupTypeAlias ctx td.name >>= λty => pure (finalizeTypeAlias ctx ty td.decl)) tds;
-     Array.miterate fs () (λ_ action _ => action)
+     Array.iterateM fs () (λ_ action _ => action)
 
 
 def outputDeclare (ctx:ffi.Context) (m:ffi.Module) (d:declare) : output Unit :=
@@ -165,8 +165,8 @@ def outputModule (ctx:ffi.Context) (m:module) : output ffi.Module :=
                   | some nm => nm
                   | none    => "";
      ffimod <- monadLift (ffi.newModule ctx modnm);
-     Array.miterate m.declares () (λ_ decl _ => outputDeclare ctx ffimod decl);
-     Array.miterate m.defines () (λ_ defn _ => outputDefine ctx ffimod defn);
+     Array.iterateM m.declares () (λ_ decl _ => outputDeclare ctx ffimod decl);
+     Array.iterateM m.defines () (λ_ defn _ => outputDefine ctx ffimod defn);
 
      pure ffimod     
 

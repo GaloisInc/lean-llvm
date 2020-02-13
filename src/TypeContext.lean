@@ -1,13 +1,13 @@
-import init.control.functor
-import init.control.applicative
-import init.control.monad
-import init.control.combinators
-import init.data.array
-import init.data.list
-import init.data.rbmap
-import .ast
-import .alignment
-import .data_layout
+import Init.Control.Functor
+import Init.Control.Applicative
+import Init.Control.Monad
+import Init.Data.Array
+import Init.Data.List
+import Init.Data.RBMap
+
+import LeanLLVM.AST
+import LeanLLVM.Alignment
+import LeanLLVM.DataLayout
 
 namespace llvm.
 
@@ -103,7 +103,7 @@ instance sym_type.inh : Inhabited sym_type := ⟨sym_type.void⟩
 instance mem_type.inh : Inhabited mem_type := ⟨mem_type.ptr sym_type.void⟩
 
 def lookup_td (tds:Array type_decl) (i:String) : Option type_decl_body :=
-  Array.find tds (λtd =>
+  Array.find? tds (λtd =>
    match decEq td.name i with
    | Decidable.isTrue _  => some td.decl
    | Decidable.isFalse _ => none
@@ -125,7 +125,7 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
 | t@(llvm_type.fun_ty ret args va) =>
      let mt : Option fun_decl := (do
           lift_mem_type ret >>= λret' =>
-            List.mmap lift_mem_type args.toList >>= λargs' =>
+            List.mapM lift_mem_type args.toList >>= λargs' =>
             pure (fun_decl.fun_decl ret' args' va));
      Option.casesOn mt (sym_type.unsupported t) sym_type.fun_type
 
@@ -142,11 +142,11 @@ partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option
      | some m => sym_type.mem_type (mem_type.vector n m))
 
 | t@(llvm_type.struct false fs) =>
-     let mt : Option (List mem_type) := List.mmap lift_mem_type fs.toList;
+     let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
 
 | t@(llvm_type.struct true fs) =>
-     let mt : Option (List mem_type) := List.mmap lift_mem_type fs.toList;
+     let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_packed_struct_info dl)
 .
 
@@ -166,8 +166,8 @@ partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type →
         match b with
         | type_decl_body.opaque   => none
         | type_decl_body.defn tp' => lift_mem_type tp'
-| llvm_type.struct false fs  => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
-| llvm_type.struct true fs   => (mem_type.struct ∘ compute_packed_struct_info dl) <$> (List.mmap lift_mem_type fs.toList)
+| llvm_type.struct false fs  => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
+| llvm_type.struct true fs   => (mem_type.struct ∘ compute_packed_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
 | llvm_type.array n tp       => mem_type.array n <$> lift_mem_type tp
 | llvm_type.vector n tp      => mem_type.vector n <$> lift_mem_type tp
 | llvm_type.fun_ty _ _ _     => none

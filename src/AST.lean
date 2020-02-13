@@ -1,8 +1,8 @@
 /- A transliteration of llvm-pretty https://github.com/elliottt/llvm-pretty/blob/master/src/Text/LLVM/AST.hs -/
 -- import data.bitvec
-import init.data.rbmap
-import init.data.string
-import init.data.int
+import Init.Data.RBMap
+import Init.Data.String
+import Init.Data.Int
 
 namespace llvm
 

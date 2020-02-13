@@ -1,11 +1,11 @@
 
-import .ast
-import .bv
-import .memory
-import .pp
-import .sim_monad
-import .type_context
-import .value
+import LeanLLVM.AST
+import LeanLLVM.BV
+import LeanLLVM.Memory
+import LeanLLVM.PP
+import LeanLLVM.SimMonad
+import LeanLLVM.TypeContext
+import LeanLLVM.Value
 
 namespace llvm.
 namespace sim.
@@ -113,7 +113,7 @@ def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → s
            throw (IO.userError "invalid array index value in GEP")
 
     | mem_type.struct si =>
-         match si.fields.getOpt v.to_nat with
+         match si.fields.get? v.to_nat with
          | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
          | none => throw (IO.userError "invalid struct index value in GEP")
 
@@ -170,7 +170,7 @@ def evalInstr : instruction → sim (Option sim.value)
         match fnv with
         | value.bv 64 bv =>
           match st.revsymmap.find bv with
-          | some s => List.mmap eval_typed args.toList >>= sim.call s
+          | some s => List.mapM eval_typed args.toList >>= sim.call s
           | none => throw (IO.userError "expected function pointer value in call")
         | _ => throw (IO.userError "expected pointer value in call")
 
@@ -243,7 +243,7 @@ def evalInstr : instruction → sim (Option sim.value)
           match sym_type_to_mem_type dl tds stp with
           | some mt =>
              do base' <- eval baseType base.value;
-                offsets' <- Array.mmap eval_typed offsets;
+                offsets' <- Array.mapM eval_typed offsets;
                 match base' with
                 | value.bv w baseptr =>
                     (some ∘ value.bv w) <$> computeGEP dl baseptr offsets'.toList (mem_type.array 0 mt)
@@ -262,10 +262,10 @@ def evalStmt (s:stmt) : sim Unit :=
      | (some _, none)   => throw (IO.userError "expected instruction to compute a value").
 
 def evalStmts (stmts:Array stmt) : sim Unit :=
-  Array.mfoldl (λ_ s => evalStmt s) () stmts
+  Array.foldlM (λ_ s => evalStmt s) () stmts
 
 def findBlock (l:block_label) (func:define) : sim (Array stmt) :=
-  match Array.find func.body (λbb =>
+  match Array.find? func.body (λbb =>
     match block_label.decideEq bb.label l with
     | Decidable.isTrue _ => some bb.stmts
     | Decidable.isFalse _ => none) with
@@ -273,7 +273,7 @@ def findBlock (l:block_label) (func:define) : sim (Array stmt) :=
   | some d => pure d.
 
 def findFunc (s:symbol) (mod:module) : sim define :=
-  match Array.find mod.defines (λd =>
+  match Array.find? mod.defines (λd =>
     match decEq d.name.symbol s.symbol with
     | Decidable.isTrue _ => some d
     | Decidable.isFalse _ => none) with
@@ -307,7 +307,7 @@ def assignArgs : List (typed ident) → List sim.value → regMap → sim regMap
 | _, _, _ => throw (IO.userError ("Acutal/formal argument mismatch")).
 
 def entryLabel (d:define) : sim block_label :=
-  match Array.getOpt d.body 0 with
+  match Array.get? d.body 0 with
   | some bb => pure bb.label
   | none    => throw $ IO.userError ("definition does not have entry block! " ++ d.name.symbol)
 
@@ -328,7 +328,7 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z) (ktrace : trace_event �
       , ktrace := ktrace
       }
       (λ_ _ _ => kerr (IO.userError "unterminated basic block!"))
-      (default _)
+      (arbitrary _)
       st.
 
 def runFunc : symbol → List sim.value → state → Sum IO.Error (Option sim.value × state) :=

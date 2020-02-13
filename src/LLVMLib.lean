@@ -1,18 +1,18 @@
-import init.data.array
-import init.data.int
-import init.data.rbmap
-import init.system.io
+import Init.Data.Array
+import Init.Data.Int
+import Init.Data.RBMap
+import Init.System.IO
 
-import .ast
-import .pp
-import .parser
-import .data_layout
-import .llvm_ffi
+import LeanLLVM.AST
+import LeanLLVM.PP
+import LeanLLVM.Parser
+import LeanLLVM.DataLayout
+import LeanLLVM.LLVMFFI
 
 namespace Option
   universes u v.
 
-  def mmap {m:Type u → Type v} {α β:Type u} [Applicative m] (f:α → m β) : Option α → m (Option β)
+  def mapM {m:Type u → Type v} {α β:Type u} [Applicative m] (f:α → m β) : Option α → m (Option β)
   | none => pure none
   | (some x) => some <$> f x
   .
@@ -58,7 +58,7 @@ instance monadExcept : MonadExcept IO.Error extract :=
   , catch := λa m handle r => catch (m r) (λerr => handle err r)
   }.
 
-instance mIO : monadIO extract :=
+instance mIO : MonadIO extract :=
   { monadLift := λa m r => m
   }
 
@@ -128,7 +128,7 @@ partial def extractType : ffi.Type_ → extract llvm_type
              match dt with
              | some (ret, args, varargs) =>
                  do ret' <- extractType ret;
-                    args' <- Array.mmap extractType args;
+                    args' <- Array.mapM extractType args;
                     pure (llvm_type.fun_ty ret' args' varargs)
              | none => throw (IO.userError "expected function type!")
 
@@ -149,7 +149,7 @@ partial def extractType : ffi.Type_ → extract llvm_type
                              do dt <- monadLift (ffi.getStructTypeData tp);
                                 match dt with
                                 | some (packed, tps) => 
-                                    do tps' <- Array.mmap extractType tps;
+                                    do tps' <- Array.mapM extractType tps;
                                        extract.define nm (type_decl_body.defn (llvm_type.struct packed tps'))
                                 | none => throw (IO.userError "expected struct type!"));
                   pure (llvm_type.alias nm)
@@ -158,7 +158,7 @@ partial def extractType : ffi.Type_ → extract llvm_type
              | none =>
                do dt <- monadLift (ffi.getStructTypeData tp);
                   match dt with
-                  | some (packed, tps)  => llvm_type.struct packed <$> Array.mmap extractType tps
+                  | some (packed, tps)  => llvm_type.struct packed <$> Array.mapM extractType tps
                   | none => throw (IO.userError "expected struct type!")
 
      | code.type.array =>
@@ -194,7 +194,7 @@ def empty_value_context := value_context.mk Array.empty RBMap.empty RBMap.empty
 
 def extractArgs (fn : ffi.Function) : extract (Nat × Array (typed ident)) :=
   do rawargs <- monadLift (ffi.getFunctionArgs fn);
-     Array.miterate rawargs (0, Array.empty) (λ _ a b => do
+     Array.iterateM rawargs (0, Array.empty) (λ _ a b => do
        let (mnm, rawtp) := a;
        let (counter, args) := b;
        tp <- extractType rawtp;
@@ -212,7 +212,7 @@ def extractBBLabel (bb:ffi.BasicBlock) (c:Nat) : extract (Nat × block_label) :=
 
 def computeInstructionNumbering (rawbb:ffi.BasicBlock) (c0:Nat) (imap0:instrMap) : extract (Nat × instrMap) :=
   do instrarr <- monadLift (ffi.getInstructionArray rawbb);
-     Array.miterate instrarr (c0, imap0)
+     Array.iterateM instrarr (c0, imap0)
        (λ _ rawi st =>
          do let (c,imap) := st;
             tp <- monadLift (ffi.getInstructionType rawi);
@@ -229,7 +229,7 @@ def computeInstructionNumbering (rawbb:ffi.BasicBlock) (c0:Nat) (imap0:instrMap)
 def computeNumberings (c0:Nat) (fn:ffi.Function) : extract (bbMap × instrMap) :=
   do bbarr <- monadLift (ffi.getBasicBlockArray fn);
      (_,finalbmap, finalimap) <-
-       Array.miterate bbarr (c0, (RBMap.empty : bbMap), (RBMap.empty : instrMap))
+       Array.iterateM bbarr (c0, (RBMap.empty : bbMap), (RBMap.empty : instrMap))
          (λ_ rawbb st =>
             do let (c, bmap, imap) := st;
                (c', blab) <- extractBBLabel rawbb c;
@@ -272,7 +272,7 @@ partial def extractConstant : ffi.Constant -> extract value
            | none => throw (IO.userError "expected constant array")
            | some (elty, cs) => 
                 do elty' <- extractType elty;
-                   cs' <- cs.mmap extractConstant;
+                   cs' <- cs.mapM extractConstant;
                    pure (value.array elty' cs')
 
      | code.const.ConstantExpr =>
@@ -282,7 +282,7 @@ partial def extractConstant : ffi.Constant -> extract value
            | some (op, xs) =>
              match op with
              | code.instr.GetElementPtr =>
-                  do cs <- Array.mmap extractTypedConstant xs;
+                  do cs <- Array.mapM extractTypedConstant xs;
                      pure (value.const_expr (const_expr.gep false none (llvm_type.prim_type prim_type.void) cs))
 
              | _ => throw (IO.userError ("unexpected (or unimplemented) constant instruction opcode: " ++ op.asString))
@@ -292,7 +292,7 @@ def extractValue (ctx:value_context) (rawv:ffi.Value) : extract value :=
   do decmp <- monadLift (ffi.decomposeValue rawv);
      match decmp with
      | ffi.value_decomposition.argument_value n =>
-       (match Array.getOpt ctx.fun_args n with
+       (match Array.get? ctx.fun_args n with
         | none => throw (IO.userError "invalid argument value")
         | (some i) => pure (value.ident i.value))
      | ffi.value_decomposition.instruction_value i =>
@@ -446,7 +446,7 @@ def extractInstruction (rawinstr:ffi.Instruction) (ctx:value_context) : extract 
           | none => throw (IO.userError "Expected alloca instruction")
           | (some (tp, nelts, align)) =>
             do tp' <- extractType tp;
-               nelts' <- Option.mmap (extractTypedValue ctx) nelts;
+               nelts' <- Option.mapM (extractTypedValue ctx) nelts;
                pure (instruction.alloca tp' nelts' align)
 
      -- load
@@ -475,7 +475,7 @@ def extractInstruction (rawinstr:ffi.Instruction) (ctx:value_context) : extract 
            | none => throw (IO.userError "Expected GEP instruction")
            | (some (inbounds,base,idxes)) =>
              do base' <- extractTypedValue ctx base;
-                idxes' <- Array.mmap (extractTypedValue ctx) idxes;
+                idxes' <- Array.mapM (extractTypedValue ctx) idxes;
                 pure (instruction.gep inbounds base' idxes')
 
      -- trunc
@@ -521,7 +521,7 @@ def extractInstruction (rawinstr:ffi.Instruction) (ctx:value_context) : extract 
              match d with
              | none => throw (IO.userError "expected phi instruction")
              | some vs =>
-                 do vs' <- vs.mmap (λ (vbb: ffi.Value × ffi.BasicBlock) =>
+                 do vs' <- vs.mapM (λ (vbb: ffi.Value × ffi.BasicBlock) =>
                              Prod.mk <$> extractValue ctx vbb.1 <*> extractBlockLabel ctx vbb.2);
                     pure (instruction.phi t vs')
 
@@ -536,7 +536,7 @@ def extractInstruction (rawinstr:ffi.Instruction) (ctx:value_context) : extract 
                                    | llvm_type.prim_type prim_type.void => @none llvm_type
                                    | _ => some (retty');
                     funv'  <- extractTypedValue ctx funv;
-                    args'  <- Array.mmap (extractTypedValue ctx) args;
+                    args'  <- Array.mapM (extractTypedValue ctx) args;
                     pure (instruction.call tail retty'' funv'.value args')
 
      -- select
@@ -559,13 +559,13 @@ def extractStmt (rawinstr:ffi.Instruction) (ctx:value_context) : extract stmt :=
 
 def extractStatements (bb:ffi.BasicBlock) (ctx:value_context) : extract (Array stmt) :=
   do rawinstrs <- monadLift (ffi.getInstructionArray bb);
-     Array.miterate rawinstrs Array.empty (λ_ rawinstr stmts =>
+     Array.iterateM rawinstrs Array.empty (λ_ rawinstr stmts =>
        do stmt <- extractStmt rawinstr ctx;
           pure (Array.push stmts stmt)).
 
 def extractBasicBlocks (fn : ffi.Function) (ctx:value_context) : extract (Array basic_block) :=
   do rawbbs <- monadLift (ffi.getBasicBlockArray fn);
-     Array.miterate rawbbs Array.empty (λ_ rawbb bs =>
+     Array.iterateM rawbbs Array.empty (λ_ rawbb bs =>
        match RBMap.find ctx.bmap rawbb with
        | none => throw (IO.userError "unknown basic block")
        | some lab =>
@@ -610,7 +610,7 @@ def extractGlobal (g:ffi.GlobalVar) : extract global :=
           match md with
           | none => throw (IO.userError "Expected global variable")
           | some (nm, val, align) =>
-              do val' <- val.mmap (extractValue empty_value_context);
+              do val' <- val.mapM (extractValue empty_value_context);
                  -- TODO!
                  let attrs := global_attrs.mk none none false;
                  pure (global.mk (symbol.mk nm) attrs valtp val' align (strmap_empty _))
@@ -619,8 +619,8 @@ def extractGlobal (g:ffi.GlobalVar) : extract global :=
 def extractModule (m:ffi.Module) : extract module :=
   do nm <- monadLift (ffi.getModuleIdentifier m);
      dl <- monadLift (extractDataLayout m);
-     fns <- monadLift (ffi.getFunctionArray m) >>= Array.mmap extractFunction;
-     gs <- monadLift (ffi.getGlobalArray m) >>= Array.mmap extractGlobal;
+     fns <- monadLift (ffi.getFunctionArray m) >>= Array.mapM extractFunction;
+     gs <- monadLift (ffi.getGlobalArray m) >>= Array.mapM extractGlobal;
      pure (module.mk
              (some nm)
              dl

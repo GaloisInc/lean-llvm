@@ -1,8 +1,8 @@
-import init.control.alternative
-import init.control.applicative
-import init.control.monad
+import Init.Control.Alternative
+import Init.Control.Applicative
+import Init.Control.Monad
 
-import init.data.char
+import Init.Data.Char
 
 
 namespace Nat.

@@ -1,6 +1,6 @@
-import init.data.nat
-import init.data.nat.div
-import init.data.nat.bitwise
+import Init.Data.Nat
+import Init.Data.Nat.Div
+import Init.Data.Nat.Bitwise
 
 structure bv (w : Nat) :=
   ( to_nat : Nat )

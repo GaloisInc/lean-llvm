@@ -1,9 +1,9 @@
-import init.data.rbmap
+import Init.Data.RBMap
 
-import .ast
-import .bv
-import .pp
-import .type_context
+import LeanLLVM.AST
+import LeanLLVM.BV
+import LeanLLVM.PP
+import LeanLLVM.TypeContext
 
 
 namespace llvm.

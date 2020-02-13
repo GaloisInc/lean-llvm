@@ -1,12 +1,8 @@
-import init.data.list
-import init.data.rbmap
-import init.data.string
+import Init.Data.List
+import Init.Data.RBMap
+import Init.Data.String
 
---import data.bitvec
---import tactic.linarith
-
-import .ast
---import .sized
+import LeanLLVM.AST
 
 namespace pp
 

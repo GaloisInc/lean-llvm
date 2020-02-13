@@ -1,20 +1,20 @@
-import init.data.rbmap
-import init.control.except
+import Init.Data.RBMap
+import Init.Control.Except
 
-import .ast
-import .bv
-import .pp
-import .data_layout
-import .llvm_lib
-import .llvm_output
-import .sim_monad
-import .simulate
+import LeanLLVM.AST
+import LeanLLVM.BV
+import LeanLLVM.PP
+import LeanLLVM.DataLayout
+import LeanLLVM.LLVMLib
+import LeanLLVM.LLVMOutput
+import LeanLLVM.SimMonad
+import LeanLLVM.Simulate
 
 open llvm.
 
-def readmain (xs : List String) : IO UInt32 := do
+def readmainActual (x:String) : IO UInt32 := do
   ctx ← ffi.newContext;
-  mb ← ffi.newMemoryBufferFromFile xs.head;
+  mb ← ffi.newMemoryBufferFromFile x;
   m ← ffi.parseBitcodeFile mb ctx >>= loadModule;
   dl <- match computeDataLayout m.data_layout with
         | (Except.error msg) => throw (IO.userError msg)
@@ -22,7 +22,7 @@ def readmain (xs : List String) : IO UInt32 := do
 
   IO.println (pp.render (pp_module m));
 
-  st0 <- runInitializers m dl 
+  st0 <- runInitializers m dl
              [(symbol.mk "arr", bv.from_nat 64 0x202000) ];
 
   --let st0 := initializeState m dl;
@@ -45,6 +45,11 @@ def readmain (xs : List String) : IO UInt32 := do
        do IO.println ("0x" ++ (Nat.toDigits 16 x.to_nat).asString);
           pure 0
   | _ => pure 0
+
+def readmain (xs : List String) : IO UInt32 :=
+  match xs with
+  | [x] => readmainActual x
+  | _ => throw (IO.userError "expected a single command line argument")
 
 def testModule : llvm.module :=
   llvm.module.mk

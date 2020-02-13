@@ -1,9 +1,9 @@
-import init.control.combinators
-import init.data.rbmap
+--import Init.Control.Combinators
+import Init.Data.RBMap
 
-import .alignment
-import .ast
-import .parser
+import LeanLLVM.Alignment
+import LeanLLVM.AST
+import LeanLLVM.Parser
 
 
 namespace llvm.parse.
@@ -139,6 +139,6 @@ def addLayoutSpec (dl:data_layout) : layout_spec → Except String data_layout
 | _ => pure dl -- ignore other layout specs
 
 def computeDataLayout (ls:List layout_spec) : Except String data_layout :=
-  List.mfoldl addLayoutSpec default_data_layout ls.
+  List.foldlM addLayoutSpec default_data_layout ls.
 
 end llvm.

@@ -1,13 +1,13 @@
-import init.data.array
-import init.data.int
-import init.data.rbmap
+import Init.Data.Array
+import Init.Data.Int
+import Init.Data.RBMap
 
-import .ast
-import .bv
-import .pp
-import .type_context
-import .sim_monad
-import .value
+import LeanLLVM.AST
+import LeanLLVM.BV
+import LeanLLVM.PP
+import LeanLLVM.TypeContext
+import LeanLLVM.SimMonad
+import LeanLLVM.Value
 
 namespace llvm.
 open sim.
@@ -81,8 +81,8 @@ partial def store (dl:data_layout) : mem_type → bv 64 → sim.value → sim Un
     else throw (IO.userError ("Integer width mismatch in store: " ++ toString w ++ " " ++ toString w'))
 
 | mem_type.struct si, p, sim.value.struct fs =>
-   si.fields.miterate () (λidx f _ =>
-     match fs.getOpt idx.val with
+   si.fields.iterateM () (λidx f _ =>
+     match fs.get? idx.val with
      | some fv => store f.value (p.add (bv.from_nat 64 f.offset.val)) fv.value
      | none    => throw (IO.userError "Struct type mismatch in store!"))
 
@@ -90,7 +90,7 @@ partial def store (dl:data_layout) : mem_type → bv 64 → sim.value → sim Un
     let (sz,a) := mem_type.szAndAlign dl mt;
     let sz' := bv.from_nat 64 (padToAlignment sz a).val;
     if vs.size = n then
-      () <$ Array.miterate vs p (λ_idx v p' =>
+      () <$ Array.iterateM vs p (λ_idx v p' =>
         do store mt p' v;
            pure (p'.add sz'))
     else throw (IO.userError
@@ -100,7 +100,7 @@ partial def store (dl:data_layout) : mem_type → bv 64 → sim.value → sim Un
  do let (sz,a) := mem_type.szAndAlign dl mt;
     let sz' := bv.from_nat 64 (padToAlignment sz a).val;
     if vs.size = n then
-      () <$ Array.miterate vs p (λ_idx v p' =>
+      () <$ Array.iterateM vs p (λ_idx v p' =>
         do store mt p' v;
            pure (p'.add sz'))
     else throw (IO.userError
@@ -134,19 +134,19 @@ def allocGlobalSymbols (mod:module) : sim Unit :=
   do st0 <- getState;  
      setState (List.foldr allocFunctionSymbol st0
         (List.map declare.name mod.declares.toList ++ List.map define.name mod.defines.toList));
-     mod.globals.miterate () (λ_ gv _ => allocGlobalVariable gv)
+     mod.globals.iterateM () (λ_ gv _ => allocGlobalVariable gv)
   
 def runInitializers (mod:module) (dl:data_layout) (ls:List (symbol × bv 64)): IO state :=
   runSim 
     (allocGlobalSymbols mod) 
     { kerr := throw
-    , kret := λ _ _ => throw "No return point"
-    , kcall := λ _ _ _ _ => throw "no calls"
-    , kjump := λ _ _ _ => throw "no jumps"
+    , kret := λ _ _ => throw (IO.userError "No return point")
+    , kcall := λ _ _ _ _ => throw (IO.userError "no calls")
+    , kjump := λ _ _ _ => throw (IO.userError "no jumps")
     , ktrace := λ _ a => a
     }
     (λ _u _frm st => pure st)
-    (default _)
+    (arbitrary _)
     (initializeState mod dl ls)
 
 end llvm.
