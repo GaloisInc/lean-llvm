@@ -1,6 +1,6 @@
+import Galois.Data.Bitvec
 
 import LeanLLVM.AST
-import LeanLLVM.BV
 import LeanLLVM.Memory
 import LeanLLVM.PP
 import LeanLLVM.SimMonad
@@ -12,7 +12,7 @@ namespace sim.
 
 def unreachable {a} : sim a := throw (IO.userError "unreachable code!").
 
-def int_op (f:∀w, bv w -> bv w -> sim sim.value) : sim.value -> sim.value -> sim sim.value
+def int_op (f:∀w, bitvec w -> bitvec w -> sim sim.value) : sim.value -> sim.value -> sim sim.value
 | value.bv wx vx, value.bv wy vy =>
     match decEq wy wx with
     | Decidable.isTrue p  => f wx vx (Eq.rec vy p)
@@ -22,9 +22,9 @@ def int_op (f:∀w, bv w -> bv w -> sim sim.value) : sim.value -> sim.value -> s
 -- TODO, implement overflow checks
 def eval_arith (op:arith_op) (x:sim.value) (y:sim.value) : sim sim.value :=
   match op with
-  | (arith_op.add uof sof) => int_op (λ w a b => pure (value.bv w (@bv.add w a b))) x y
-  | (arith_op.sub uof sof) => int_op (λ w a b => pure (value.bv w (@bv.sub w a b))) x y
-  | (arith_op.mul uof sof) => int_op (λ w a b => pure (value.bv w (@bv.mul w a b))) x y
+  | (arith_op.add uof sof) => int_op (λ w a b => pure (value.bv w (@bitvec.add w a b))) x y
+  | (arith_op.sub uof sof) => int_op (λ w a b => pure (value.bv w (@bitvec.sub w a b))) x y
+  | (arith_op.mul uof sof) => int_op (λ w a b => pure (value.bv w (@bitvec.mul w a b))) x y
   | _ => throw (IO.userError "NYE: unimplemented arithmetic operation").
 
 def asPred : sim.value → sim Bool
@@ -33,8 +33,8 @@ def asPred : sim.value → sim Bool
 
 def eval_icmp (op:icmp_op) : sim.value → sim.value → sim sim.value :=
   int_op (λw a b =>
-    let t := (pure (value.bv 1 (bv.from_nat 1 1)) : sim sim.value);
-    let f := (pure (value.bv 1 (bv.from_nat 1 0)) : sim sim.value);
+    let t := (pure (value.bv 1 (bitvec.of_nat 1 1)) : sim sim.value);
+    let f := (pure (value.bv 1 (bitvec.of_nat 1 0)) : sim sim.value);
     match op with
     | icmp_op.ieq  => if a.to_nat =  b.to_nat then t else f
     | icmp_op.ine  => if a.to_nat != b.to_nat then t else f
@@ -54,19 +54,19 @@ def eval_icmp (op:icmp_op) : sim.value → sim.value → sim sim.value :=
 def eval_bit (op:bit_op) : sim.value → sim.value → sim sim.value :=
   int_op (λw a b =>
     match op with
-    | bit_op.and  => pure (value.bv w (@bv.bitwise_and w a b))
-    | bit_op.or   => pure (value.bv w (@bv.bitwise_or w a b))
-    | bit_op.xor  => pure (value.bv w (@bv.bitwise_xor w a b))
-    | (bit_op.shl uov sov) => pure (value.bv w (@bv.shl w a b))
-    | (bit_op.lshr exact)  => pure (value.bv w (@bv.lshr w a b))
-    | (bit_op.ashr exact)  => pure (value.bv w (@bv.ashr w a b))
+    | bit_op.and  => pure (value.bv w (@bitvec.and w a b))
+    | bit_op.or   => pure (value.bv w (@bitvec.or w a b))
+    | bit_op.xor  => pure (value.bv w (@bitvec.xor w a b))
+    | (bit_op.shl uov sov) => pure (value.bv w (@bitvec.shl w a b.to_nat))
+    | (bit_op.lshr exact)  => pure (value.bv w (@bitvec.ushr w a b.to_nat))
+    | (bit_op.ashr exact)  => pure (value.bv w (@bitvec.sshr w a b.to_nat))
   ).
 
 
 def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.value
 | conv_op.trunc, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 >= w2 then
-      pure (value.bv w2 (bv.from_nat w2 x.to_nat))
+      pure (value.bv w2 (bitvec.of_nat w2 x.to_nat))
     else
       throw (IO.userError "invalid trunc operation")
 | conv_op.trunc, _, _, _ => throw (IO.userError "invalid trunc operation")
@@ -74,7 +74,7 @@ def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.valu
 
 | conv_op.zext, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 <= w2 then
-      pure (value.bv w2 (bv.from_nat w2 x.to_nat))
+      pure (value.bv w2 (bitvec.of_nat w2 x.to_nat))
     else
       throw (IO.userError "invalid zext operation")
 | conv_op.zext, _, _, _ => throw (IO.userError "invalid zext operation")
@@ -82,7 +82,7 @@ def eval_conv : conv_op → mem_type → sim.value → mem_type → sim sim.valu
 
 | conv_op.sext, mem_type.int w1, value.bv wx x, mem_type.int w2 =>
     if w1 = wx ∧ w1 <= w2 then
-      pure (value.bv w2 (bv.from_int w2 x.to_int))
+      pure (value.bv w2 (bitvec.of_int w2 x.to_int))
     else
       throw (IO.userError "invalid sext operation")
 | conv_op.sext, _, _, _ => throw (IO.userError "invalid sext operation")
@@ -99,7 +99,7 @@ def phi (t:mem_type) (prv:block_label) : List (llvm.value × block_label) → si
 | (v,l)::xs => if prv = l then eval t v else phi xs
 
 
-def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → sim (bv w)
+def computeGEP {w} (dl:data_layout) : bitvec w → List sim.value → mem_type → sim (bitvec w)
 | base, [], _ => pure base
 | base, value.bv w' v :: offsets, ty =>
     match ty with
@@ -107,14 +107,14 @@ def computeGEP {w} (dl:data_layout) : bv w → List sim.value → mem_type → s
          if (w = w') then
            let (sz,a) := mem_type.szAndAlign dl ty';
            let sz' := padToAlignment sz a;
-           let idx := bv.from_int w (v.to_int * (Int.ofNat sz'.val));
-           computeGEP (bv.add base idx) offsets ty'
+           let idx := bitvec.of_int w (v.to_int * (Int.ofNat sz'.val));
+           computeGEP (bitvec.add base idx) offsets ty'
          else
            throw (IO.userError "invalid array index value in GEP")
 
     | mem_type.struct si =>
          match si.fields.get? v.to_nat with
-         | (some fi) => computeGEP (bv.add base (bv.from_nat w fi.offset.val)) offsets fi.value
+         | (some fi) => computeGEP (bitvec.add base (bitvec.of_nat w fi.offset.val)) offsets fi.value
          | none => throw (IO.userError "invalid struct index value in GEP")
 
     | _ => throw (IO.userError "Invalid GEP")

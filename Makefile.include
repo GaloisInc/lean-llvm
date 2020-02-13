@@ -1,7 +1,6 @@
 HERE := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 LOCALFILES := src/Alignment.lean\
   src/AST.lean\
-  src/BV.lean\
   src/PP.lean\
   src/DataLayout.lean\
   src/LLVMCodes.lean\

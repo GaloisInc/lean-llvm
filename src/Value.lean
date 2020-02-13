@@ -1,7 +1,8 @@
 import Init.Data.RBMap
 
+import Galois.Data.Bitvec
+
 import LeanLLVM.AST
-import LeanLLVM.BV
 import LeanLLVM.PP
 import LeanLLVM.TypeContext
 
@@ -10,7 +11,7 @@ namespace llvm.
 namespace sim.
 
 inductive value : Type
-| bv       (w : Nat) : bv w → value
+| bv       (w : Nat) : bitvec w → value
 | vec    : mem_type → Array value → value
 | array  : mem_type → Array value → value
 | struct : Array (fieldInfo value) → value
@@ -20,7 +21,7 @@ inductive value : Type
 namespace value.
 
 partial def pretty : value → pp.doc
-| bv w x => pp.text x.asString
+| bv w x => pp.text x.pp_hex
 | vec _mt xs   => pp.angles (pp.commas (xs.toList.map pretty))
 | array _mt xs => pp.brackets (pp.commas (xs.toList.map pretty))
 | struct fs => pp.braces (pp.commas (fs.toList.map (λfi => pretty fi.value)))
@@ -31,7 +32,7 @@ end value.
 
 
 @[reducible]
-def memMap := @RBMap (bv 64) (bv 8) (λx y => decide (x < y)).
+def memMap := @RBMap (bitvec 64) (bitvec 8) (λx y => decide (bitvec.ult x y)).
 
 @[reducible]
 def regMap := @RBMap ident value (λx y => decide (x < y)).

@@ -1,8 +1,9 @@
 import Init.Data.RBMap
 import Init.Control.Except
 
+import Galois.Data.Bitvec
+
 import LeanLLVM.AST
-import LeanLLVM.BV
 import LeanLLVM.PP
 import LeanLLVM.DataLayout
 import LeanLLVM.LLVMLib
@@ -23,7 +24,7 @@ def readmainActual (x:String) : IO UInt32 := do
   IO.println (pp.render (pp_module m));
 
   st0 <- runInitializers m dl
-             [(symbol.mk "arr", bv.from_nat 64 0x202000) ];
+             [(symbol.mk "arr", bitvec.of_nat 64 0x202000) ];
 
   --let st0 := initializeState m dl;
 

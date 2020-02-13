@@ -3,8 +3,9 @@ import Init.Data.Int
 import Init.Data.RBMap
 import Init.Data.String
 
+import Galois.Data.Bitvec
+
 import LeanLLVM.AST
-import LeanLLVM.BV
 import LeanLLVM.PP
 import LeanLLVM.TypeContext
 import LeanLLVM.Value
@@ -12,16 +13,16 @@ import LeanLLVM.Value
 namespace llvm.
 
 inductive trace_event : Type
-| load   (ptr : bv 64) (mt:mem_type) (val:sim.value) : trace_event
-| store  (ptr : bv 64) (mt:mem_type) (val:sim.value) : trace_event
-| alloca (ptr : bv 64) (sz : bytes) : trace_event
+| load   (ptr : bitvec 64) (mt:mem_type) (val:sim.value) : trace_event
+| store  (ptr : bitvec 64) (mt:mem_type) (val:sim.value) : trace_event
+| alloca (ptr : bitvec 64) (sz : bytes) : trace_event
 
 namespace trace_event.
 
 def asString : trace_event -> String
-| load ptr mt val  => "LOAD   " ++ ptr.asString ++ " " ++ pp.render val.pretty
-| store ptr mt val => "STORE  " ++ ptr.asString ++ " " ++ pp.render val.pretty
-| alloca ptr sz    => "ALLOCA " ++ ptr.asString ++ " " ++ sz.asString
+| load ptr mt val  => "LOAD   " ++ ptr.pp_hex ++ " " ++ pp.render val.pretty
+| store ptr mt val => "STORE  " ++ ptr.pp_hex ++ " " ++ pp.render val.pretty
+| alloca ptr sz    => "ALLOCA " ++ ptr.pp_hex ++ " " ++ sz.asString
 
 end trace_event.
 
@@ -48,8 +49,8 @@ structure state :=
   (dl  : data_layout)
   (heapAllocPtr : bytes)
   (stackPtr : bytes)
-  (symmap : @RBMap symbol (bv 64) (λx y => decide (x < y)))
-  (revsymmap : @RBMap (bv 64) symbol (λx y => decide (x < y)))
+  (symmap : @RBMap symbol (bitvec 64) (λx y => decide (x < y)))
+  (revsymmap : @RBMap (bitvec 64) symbol (λx y => decide (bitvec.ult x y)))
 .
 
 structure sim_conts (z:Type) :=
@@ -133,12 +134,12 @@ def eval_mem_type (t:llvm_type) : sim mem_type :=
 
 partial def eval : mem_type → llvm.value → sim sim.value
 | _,              value.ident i    => sim.lookupReg i
-| mem_type.int w, value.integer n  => pure (value.bv w (bv.from_int w n))
-| mem_type.int w, value.bool true  => pure (value.bv w (bv.from_int w 1))
-| mem_type.int w, value.bool false => pure (value.bv w (bv.from_int w 0))
-| mem_type.int w, value.null       => pure (value.bv w (bv.from_int w 0))
-| mem_type.int w, value.zero_init  => pure (value.bv w (bv.from_int w 0))
-| mem_type.int w, value.undef      => pure (value.bv w (bv.from_int w 0)) --???
+| mem_type.int w, value.integer n  => pure (value.bv w (bitvec.of_int w n))
+| mem_type.int w, value.bool true  => pure (value.bv w (bitvec.of_int w 1))
+| mem_type.int w, value.bool false => pure (value.bv w (bitvec.of_int w 0))
+| mem_type.int w, value.null       => pure (value.bv w (bitvec.of_int w 0))
+| mem_type.int w, value.zero_init  => pure (value.bv w (bitvec.of_int w 0))
+| mem_type.int w, value.undef      => pure (value.bv w (bitvec.of_int w 0)) --???
 | mem_type.ptr _, value.symbol s  =>
    do st <- sim.getState;
       match st.symmap.find s with
@@ -160,16 +161,16 @@ end sim.
 
 -- Heap allocation counts up.  Find the next aligned value and return it,
 -- advancing the heap allocation pointer x bytes beyond.
-def allocOnHeap (x:bytes) (a:alignment) (st:state) : Prod (bv 64) state :=
+def allocOnHeap (x:bytes) (a:alignment) (st:state) : Prod (bitvec 64) state :=
   let ptr  := padToAlignment st.heapAllocPtr a;
   let ptr' := ptr.add x;
-  ( bv.from_nat 64 ptr.val, { st with heapAllocPtr := ptr' } )
+  ( bitvec.of_nat 64 ptr.val, { st with heapAllocPtr := ptr' } )
 
 -- Stack allocation counts down.  Find the next aligned value that provides
 -- enough space and return it, advancing the stack pointer to this point.
-def allocOnStack (x:bytes) (a:alignment) (st:state) : Prod (bv 64) state :=
+def allocOnStack (x:bytes) (a:alignment) (st:state) : Prod (bitvec 64) state :=
   let ptr := padDownToAlignment (st.stackPtr.sub x) a;
-  ( bv.from_nat 64 ptr.val, { st with stackPtr := ptr })
+  ( bitvec.of_nat 64 ptr.val, { st with stackPtr := ptr })
 
 def allocFunctionSymbol (s:symbol) (st:state) : state :=
   let (ptr, st') := allocOnHeap (bytes.mk 16) (alignment.mk 4) st; -- 16 bytes with 16 byte alignment, rather arbitrarily
@@ -179,14 +180,14 @@ def allocFunctionSymbol (s:symbol) (st:state) : state :=
   }.
 
 
-def linkSymbol (st:state) (x:symbol × bv 64) : state :=
+def linkSymbol (st:state) (x:symbol × bitvec 64) : state :=
   let (s,ptr) := x;
    { st with
        symmap := st.symmap.insert s ptr,
        revsymmap := st.revsymmap.insert ptr s
    }
 
-def initializeState (mod : module) (dl:data_layout) (ls:List (symbol × bv 64)) : state :=
+def initializeState (mod : module) (dl:data_layout) (ls:List (symbol × bitvec 64)) : state :=
        ls.foldl linkSymbol
          { mem := RBMap.empty
          , mod := mod
