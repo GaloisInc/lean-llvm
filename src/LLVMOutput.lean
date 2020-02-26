@@ -65,7 +65,7 @@ def alterSymbolMap (f:symMap → symMap) : output Unit :=
 
 def lookupAlias (nm:String) : output (Option ffi.Type_) :=
   λr => do vc <- r.get;
-           pure (vc.type_map.find nm)
+           pure (vc.type_map.find? nm)
 
 /-
 def createFunction (m:Module) (nm:symbol) : output LLVMFunction :=

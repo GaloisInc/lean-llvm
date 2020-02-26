@@ -78,7 +78,7 @@ def run {a:Type} (m:extract a) : IO (aliasMap × a) :=
 def visit (nm:String) : extract Bool :=
   λref =>
     do (am,vm) <- ref.get;
-       match vm.find nm with
+       match vm.find? nm with
        | some () => pure true
        | none =>
           do let vm' := RBMap.insert vm nm ();
@@ -296,7 +296,7 @@ def extractValue (ctx:value_context) (rawv:ffi.Value) : extract value :=
         | none => throw (IO.userError "invalid argument value")
         | (some i) => pure (value.ident i.value))
      | ffi.value_decomposition.instruction_value i =>
-       (match RBMap.find ctx.imap i with
+       (match RBMap.find? ctx.imap i with
         | none => throw (IO.userError "invalid instruction value")
         | (some i) => pure (value.ident i)
        )
@@ -309,7 +309,7 @@ def extractValue (ctx:value_context) (rawv:ffi.Value) : extract value :=
      | ffi.value_decomposition.unknown_value => throw (IO.userError "unknown value")
 
 def extractBlockLabel (ctx:value_context) (bb:ffi.BasicBlock) : extract block_label :=
-  match RBMap.find ctx.bmap bb with
+  match RBMap.find? ctx.bmap bb with
   | none => throw (IO.userError "unknown basic block")
   | (some lab) => pure lab
 
@@ -555,7 +555,7 @@ def extractInstruction (rawinstr:ffi.Instruction) (ctx:value_context) : extract 
 
 def extractStmt (rawinstr:ffi.Instruction) (ctx:value_context) : extract stmt :=
   do i <- extractInstruction rawinstr ctx;
-     pure (stmt.mk (RBMap.find ctx.imap rawinstr) i Array.empty).
+     pure (stmt.mk (RBMap.find? ctx.imap rawinstr) i Array.empty).
 
 def extractStatements (bb:ffi.BasicBlock) (ctx:value_context) : extract (Array stmt) :=
   do rawinstrs <- monadLift (ffi.getInstructionArray bb);
@@ -566,7 +566,7 @@ def extractStatements (bb:ffi.BasicBlock) (ctx:value_context) : extract (Array s
 def extractBasicBlocks (fn : ffi.Function) (ctx:value_context) : extract (Array basic_block) :=
   do rawbbs <- monadLift (ffi.getBasicBlockArray fn);
      Array.iterateM rawbbs Array.empty (λ_ rawbb bs =>
-       match RBMap.find ctx.bmap rawbb with
+       match RBMap.find? ctx.bmap rawbb with
        | none => throw (IO.userError "unknown basic block")
        | some lab =>
            do stmts <- extractStatements rawbb ctx;

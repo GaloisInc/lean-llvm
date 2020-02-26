@@ -41,7 +41,7 @@ def storeBytes : bitvec 64 → List (bitvec 8) → sim.memMap → sim.memMap
 def loadBytes : bitvec 64 → Nat → sim.memMap → Option (List (bitvec 8))
 | _p, 0, _mem => pure []
 |  p, Nat.succ n, mem =>
-     do b <- mem.find p;
+     do b <- mem.find? p;
         bs <- loadBytes (p.add (bitvec.of_nat 64 1)) n mem;
         pure (b::bs)
 
@@ -117,7 +117,7 @@ def allocGlobalVariable (gv:global) : sim Unit :=
    do st <- sim.getState;
       mt <- sim.eval_mem_type gv.type;
       ptr <- 
-        (match st.symmap.find gv.sym with
+        (match st.symmap.find? gv.sym with
          | some ptr => pure ptr
          | none =>
              do let (sz, align) := mem_type.szAndAlign st.dl mt;

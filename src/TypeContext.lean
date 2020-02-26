@@ -103,11 +103,13 @@ instance sym_type.inh : Inhabited sym_type := ⟨sym_type.void⟩
 instance mem_type.inh : Inhabited mem_type := ⟨mem_type.ptr sym_type.void⟩
 
 def lookup_td (tds:Array type_decl) (i:String) : Option type_decl_body :=
-  Array.find? tds (λtd =>
+  Option.map type_decl.decl
+  (tds.find? (λtd =>
    match decEq td.name i with
-   | Decidable.isTrue _  => some td.decl
-   | Decidable.isFalse _ => none
-   ).
+   | Decidable.isTrue _  => true
+   | Decidable.isFalse _ => false
+   )).
+
 
 partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option mem_type) (tds:Array type_decl) : llvm_type → sym_type
 | t@(llvm_type.prim_type pt) =>

@@ -169,7 +169,7 @@ def evalInstr : instruction → sim (Option sim.value)
         st <- sim.getState;
         match fnv with
         | value.bv 64 bv =>
-          match st.revsymmap.find bv with
+          match st.revsymmap.find? bv with
           | some s => List.mapM eval_typed args.toList >>= sim.call s
           | none => throw (IO.userError "expected function pointer value in call")
         | _ => throw (IO.userError "expected pointer value in call")
@@ -267,16 +267,16 @@ def evalStmts (stmts:Array stmt) : sim Unit :=
 def findBlock (l:block_label) (func:define) : sim (Array stmt) :=
   match Array.find? func.body (λbb =>
     match block_label.decideEq bb.label l with
-    | Decidable.isTrue _ => some bb.stmts
-    | Decidable.isFalse _ => none) with
+    | Decidable.isTrue _ => true
+    | Decidable.isFalse _ => false) with
   | none => throw (IO.userError ("Could not find block: " ++ pp.render (pp_label l)))
-  | some d => pure d.
+  | some d => pure d.stmts .
 
 def findFunc (s:symbol) (mod:module) : sim define :=
   match Array.find? mod.defines (λd =>
     match decEq d.name.symbol s.symbol with
-    | Decidable.isTrue _ => some d
-    | Decidable.isFalse _ => none) with
+    | Decidable.isTrue _ => true
+    | Decidable.isFalse _ => false) with
   | none => throw (IO.userError ("Could not find function: " ++ s.symbol))
   | some d => pure d.
 

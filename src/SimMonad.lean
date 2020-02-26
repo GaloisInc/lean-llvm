@@ -110,7 +110,7 @@ def trace (ev:trace_event) : sim Unit :=
 
 def lookupReg (reg:ident) : sim value :=
   do frm <- getFrame;
-     match RBMap.find frm.locals reg with
+     match RBMap.find? frm.locals reg with
      | none     => throw (IO.userError ("unassigned register: " ++ reg.asString))
      | (some v) => pure v
 
@@ -142,7 +142,7 @@ partial def eval : mem_type → llvm.value → sim sim.value
 | mem_type.int w, value.undef      => pure (value.bv w (bitvec.of_int w 0)) --???
 | mem_type.ptr _, value.symbol s  =>
    do st <- sim.getState;
-      match st.symmap.find s with
+      match st.symmap.find? s with
       | (some ptr) => pure (value.bv 64 ptr)
       | none => throw (IO.userError ("could not resolve symbol: " ++ s.symbol))
 
