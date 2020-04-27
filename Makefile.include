@@ -1,4 +1,4 @@
-HERE := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+HERE := $(abspath $(dir $(realpath $(lastword $(MAKEFILE_LIST)))))
 LOCALFILES := src/Alignment.lean\
   src/AST.lean\
   src/PP.lean\
@@ -17,9 +17,10 @@ LOCALFILES := src/Alignment.lean\
 LOCAL_CXX := src/llvm_exports.cpp
 
 
-LEANFILES += $(patsubst %,${HERE}%,${LOCALFILES})
-EXTRACXXFILES += $(patsubst %,${HERE}%,${LOCAL_CXX})
-LEAN_PATH := ${LEAN_PATH}:LeanLLVM=${HERE}src/
+LEANFILES += $(patsubst %,${HERE}/%,${LOCALFILES})
+
+EXTRACXXFILES += $(patsubst %,${HERE}/%,${LOCAL_CXX})
+LEAN_PATH := ${LEAN_PATH}:LeanLLVM=${HERE}/src
 
 $(HERE)/src/LLVMCodes.lean : $(HERE)/src/LLVMCodes.lean.in
 	$(CXX) -E -P -I$(LLVM_INCLUDE) -o $@ -x c $<
