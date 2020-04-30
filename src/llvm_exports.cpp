@@ -574,7 +574,7 @@ obj_res lean_llvm_decomposeValue(b_obj_arg v_obj, obj_arg r) {
 
         // argument_value : Nat -> value_decomposition
 	x = alloc_cnstr(2, 1, 0);
-	cnstr_set_scalar(x, 0, box(a->getArgNo()));
+	cnstr_set(x, 0, box(a->getArgNo()));
 
     } else if (auto b = llvm::dyn_cast<llvm::BasicBlock>(v)) {
 

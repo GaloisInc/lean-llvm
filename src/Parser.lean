@@ -88,7 +88,7 @@ def opt' {α} (m:parse α) : parse (Option α) :=
   opt none (some <$> m).
 
 def choosePrefix {α} : List (String × parse α) → parse α :=
-  delimit ∘ List.foldr (λb m => (text b.1 *> commit b.2) <|> m) failure.
+  delimit ∘ List.foldr (λb m => (do _ <- text b.1; commit b.2) <|> m) failure.
 
 partial def manyAux {α} (m:parse α) (z:Type) (someZ : z)
   : (List α → List String → String → z) → List String → String → z
@@ -116,11 +116,14 @@ def manyOne' {α} (m:parse α) : parse (List α) :=
      pure (x::xs).
 
 def sepBy {α β} (m:parse α) (sep:parse β) : parse (List α) :=
-  (List.cons <$> m <*> many (sep *> m)).
+  (List.cons <$> m <*> many (do _ <- sep; m)).
 
 def nat : parse Nat :=
   parse.describe "nat"
     (Nat.fromDigits <$> manyOne' digit).
+
+def textThen {α} (strLit:String) (m:parse α) : parse α :=
+do _ <- text strLit; m
 
 def eof : parse Unit :=
   parse.mk (λz kerr kfail k stk str =>
