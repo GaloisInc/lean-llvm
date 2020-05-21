@@ -6,8 +6,7 @@ source base, and these are guidelines intended to capture those conventions.
 Identifiers
 ------------
 
-In general, follow the guidelines in [Microsoft's capitalization conventions]
-(https://docs.microsoft.com/en-us/dotnet/standard/design-guidelines/capitalization-conventions).  
+In general, follow the guidelines in [Microsoft's capitalization conventions](https://docs.microsoft.com/en-us/dotnet/standard/design-guidelines/capitalization-conventions).  
 
 Specifically use PascalCase (i.e. start with a capital letter) for namespaces and types,
 including those introduced
@@ -26,6 +25,22 @@ def f : Nat → Nat
     1
   else
     i * f (i-1)
+```
+
+Use hanging `do`, e.g.,
+
+```
+def foo := do
+  something;
+  else
+```
+
+Rather than other styles such as
+
+```
+def foo :=
+  do something;
+     else
 ```
 
 Structures
@@ -49,7 +64,7 @@ assignment, e.g.,
     field2 := expr2,
     field3 := expr3,
   }
-``
+```
     
 
 Match expressions
@@ -62,14 +77,3 @@ Each case in a match has the underscore aligned with the match statement, .e.g.,
   | Case1 => ...
   | Case2 => ...
 ```
-
-do indention
-------------
-
-Use hanging `do`, e.g.,
-
-```
-def foo := do
-  something;
-```
-
