@@ -1,144 +1,153 @@
---import Init.Control.Combinators
 import Init.Data.RBMap
 
 import LeanLLVM.Alignment
 import LeanLLVM.AST
 import LeanLLVM.Parser
 
+namespace LLVM
+namespace parse
 
-namespace llvm.parse.
+section Mangling
 
-def pointer_spec : parse llvm.layout_spec :=
-  parse.describe "pointer spec spec" $
-  do addrSpace <- parse.opt 0 parse.nat;
+open Mangling
+
+def mangling_spec : parse Mangling :=
+  parse.describe "mangling spec" $
+  parse.choosePrefix
+  [ ("e", pure elf)
+  , ("m", pure mips)
+  , ("o", pure mach_o)
+  , ("w", pure windows_coff)
+  , ("x", pure windows_coff_x86)
+  ]
+
+end Mangling
+
+
+section LayoutSpec
+open LayoutSpec
+
+def pointer_spec : parse LayoutSpec :=
+  parse.describe "pointer spec spec" $ do
+     addrSpace <- parse.opt 0 parse.nat;
      sz   <- parse.textThen ":" parse.nat;
      abi  <- parse.textThen ":" parse.nat;
      pref <- parse.textThen ":" parse.nat;
      idx  <- parse.opt' (parse.textThen ":" parse.nat);
-     pure (llvm.layout_spec.pointer_size addrSpace sz abi pref idx).
+     pure (pointerSize addrSpace sz abi pref idx)
 
-def size_spec (t:llvm.align_type) : parse llvm.layout_spec :=
-  parse.describe "size spec" $
-  do sz   <- parse.nat;
+def size_spec (t:AlignType) : parse LayoutSpec :=
+  parse.describe "size spec" $ do
+     sz  <- parse.nat;
      abi  <- parse.textThen ":" parse.nat;
      pref <- parse.opt' (parse.textThen ":" parse.nat);
-     pure (llvm.layout_spec.align_size t sz abi pref).
+     pure (alignSize t sz abi pref).
 
-def mangling_spec : parse llvm.mangling :=
-  parse.describe "mangling spec" $
-  parse.choosePrefix
-  [ ("e", pure llvm.mangling.elf)
-  , ("m", pure llvm.mangling.mips)
-  , ("o", pure llvm.mangling.mach_o)
-  , ("w", pure llvm.mangling.windows_coff)
-  , ("x", pure llvm.mangling.windows_coff_x86)
-  ]
-
-def layout_spec : parse llvm.layout_spec :=
+def layout_spec : parse LayoutSpec :=
   parse.describe "layout spec" $
   parse.choosePrefix
-  [ ("E", pure (llvm.layout_spec.endianness llvm.endian.big))
-  , ("e", pure (llvm.layout_spec.endianness llvm.endian.little))
+  [ ("E", pure (endianness Endian.big))
+  , ("e", pure (endianness Endian.little))
   , ("p", pointer_spec)
-  , ("i", size_spec llvm.align_type.integer)
-  , ("v", size_spec llvm.align_type.vector)
-  , ("f", size_spec llvm.align_type.float)
-  , ("a", llvm.layout_spec.aggregate_align <$> (parse.textThen ":" parse.nat) <*> (parse.textThen ":" parse.nat))
-  , ("n", llvm.layout_spec.native_int_size <$> parse.sepBy parse.nat (parse.text ":"))
-  , ("S", llvm.layout_spec.stack_align <$> parse.nat)
-  , ("P", llvm.layout_spec.function_address_space <$> parse.nat)
-  , ("A", llvm.layout_spec.stack_alloca <$> parse.nat)
-  , ("m", llvm.layout_spec.mangling <$> (parse.textThen ":" mangling_spec))
-  ].
+  , ("i", size_spec AlignType.integer)
+  , ("v", size_spec AlignType.vector)
+  , ("f", size_spec AlignType.float)
+  , ("a", aggregateAlign <$> (parse.textThen ":" parse.nat) <*> (parse.textThen ":" parse.nat))
+  , ("n", nativeIntSize <$> parse.sepBy parse.nat (parse.text ":"))
+  , ("S", stackAlign <$> parse.nat)
+  , ("P", functionAddressSpace <$> parse.nat)
+  , ("A", stackAlloca <$> parse.nat)
+  , ("m", mangling <$> (parse.textThen ":" mangling_spec))
+  ]
 
-def data_layout : parse (List llvm.layout_spec) :=
+end LayoutSpec
+
+def data_layout : parse (List LayoutSpec) :=
   parse.describe "data layout" $
-    parse.sepBy layout_spec (parse.text "-").
+    parse.sepBy layout_spec (parse.text "-")
 
-end llvm.parse.
+end parse
+end LLVM
 
-namespace llvm.
+namespace LLVM
 
-structure data_layout :=
-  ( int_layout : endian )
-  ( stack_alignment : alignment )
-  ( aggregate_alignment : alignment )
-  ( ptr_size : bytes ) -- size in bytes
-  ( ptr_align : alignment )
-  ( integer_info : alignInfo )
-  ( vector_info : alignInfo )
-  ( float_info : alignInfo )
-.
+structure DataLayout :=
+(intLayout          : Endian)
+(stackAlignment     : Alignment)
+(aggregateAlignment : Alignment)
+(ptrSize            : Nat) -- size in bytes
+(ptrAlign           : Alignment)
+(integerInfo        : AlignInfo)
+(vectorInfo         : AlignInfo)
+(floatInfo          : AlignInfo)
 
-def default_data_layout : data_layout :=
-  { int_layout := endian.big
-  , stack_alignment := noAlignment
-  , aggregate_alignment := noAlignment
-  , ptr_size := bytes.mk 8 -- 8 bytes, 64 bits
-  , ptr_align := alignment.mk 3
-  , integer_info := RBMap.fromList
-       [ ( 1, noAlignment)
-       , ( 8, noAlignment)
-       , (16, alignment.mk 1)
-       , (32, alignment.mk 2)
-       , (64, alignment.mk 3)
+def default_data_layout : DataLayout :=
+  { intLayout := Endian.big
+  , stackAlignment := unaligned
+  , aggregateAlignment := unaligned
+  , ptrSize := 8 -- 8 bytes, 64 bits
+  , ptrAlign := align8
+  , integerInfo := RBMap.fromList
+       [ ( 1, unaligned)
+       , ( 8, unaligned)
+       , (16, align2)
+       , (32, align4)
+       , (64, align8)
        ] _
-  , float_info := RBMap.fromList
-       [ ( 16, alignment.mk 1)
-       , ( 32, alignment.mk 2)
-       , ( 64, alignment.mk 3)
-       , (128, alignment.mk 4)
+  , floatInfo := RBMap.fromList
+       [ ( 16, align2)
+       , ( 32, align4)
+       , ( 64, align8)
+       , (128, align16)
        ] _
-  , vector_info := RBMap.fromList
-       [ ( 64, alignment.mk 3)
-       , (128, alignment.mk 4)
+  , vectorInfo := RBMap.fromList
+       [ ( 64, align8)
+       , (128, align16)
        ] _
-  }.
+  }
 
-def updateAlign (x:Nat) (a:alignment) (ai:alignInfo) : alignInfo :=
-  ai.insert x a.
+def updateAlign (x:Nat) (a:Alignment) (ai:AlignInfo) : AlignInfo := ai.insert x a
 
-def addIntegerAlignment (x:Nat) (a:alignment) (dl:data_layout) : data_layout :=
-  { dl with integer_info := updateAlign x a dl.integer_info }
+def addIntegerAlignment (x:Nat) (a:Alignment) (dl:DataLayout) : DataLayout :=
+  { dl with integerInfo := updateAlign x a dl.integerInfo }
 
-def addFloatAlignment (x:Nat) (a:alignment) (dl:data_layout) : data_layout :=
-  { dl with float_info := updateAlign x a dl.float_info }
+def addFloatAlignment (x:Nat) (a:Alignment) (dl:DataLayout) : DataLayout :=
+  { dl with floatInfo := updateAlign x a dl.floatInfo }
 
-def addVectorAlignment (x:Nat) (a:alignment) (dl:data_layout) : data_layout :=
-  { dl with vector_info := updateAlign x a dl.vector_info }
+def addVectorAlignment (x:Nat) (a:Alignment) (dl:DataLayout) : DataLayout :=
+  { dl with vectorInfo := updateAlign x a dl.vectorInfo }
 
+section LayoutSpec
+open LayoutSpec
+open AlignType
 
-def addLayoutSpec (dl:data_layout) : layout_spec → Except String data_layout
-
-| (layout_spec.endianness e) => pure { dl with int_layout := e }
-
-| (layout_spec.stack_align sa) =>
-     match toAlignment (toBytes sa) with
-     | none => throw ("invalid stack alignment: " ++ (Nat.toDigits 10 sa).asString)
-     | (some a) => pure { dl with stack_alignment := a }
-
-| (layout_spec.aggregate_align abi _pref) =>
-     match toAlignment (toBytes abi) with
-     | none => throw ("invalid aggregate alignment: " ++ (Nat.toDigits 10 abi).asString)
-     | (some a) => pure { dl with aggregate_alignment := a }
-
-| (layout_spec.pointer_size addr sz abi _pref _idx) =>
-     match toAlignment (toBytes abi) with
-     | none => throw ("invalid pointer alignment: " ++ (Nat.toDigits 10 abi).asString)
-     | (some a) => pure { dl with ptr_size := toBytes sz, ptr_align := a }
-
-| (layout_spec.align_size tp sz abi _pref) =>
-     match toAlignment (toBytes abi) with
-     | none => throw ("invalid alignment: " ++ (Nat.toDigits 10 abi).asString)
-     | (some a) =>
-       match tp with
-       | align_type.integer   => pure (addIntegerAlignment sz a dl)
-       | align_type.vector    => pure (addVectorAlignment sz a dl)
-       | align_type.float     => pure (addFloatAlignment sz a dl)
-
+def addLayoutSpec (dl:DataLayout) : LayoutSpec → Except String DataLayout
+| endianness e => pure { dl with intLayout := e }
+| stackAlign sa =>
+  match toAlignment sa with
+  | none   => throw ("invalid stack alignment: " ++ (Nat.toDigits 10 sa).asString)
+  | some a => pure { dl with stackAlignment := a }
+| aggregateAlign abi pref =>
+  match toAlignment abi with
+  | none   => throw ("invalid aggregate alignment: " ++ (Nat.toDigits 10 abi).asString)
+  | some a => pure { dl with aggregateAlignment := a }
+| pointerSize addr sz abi _pref _idx =>
+  match toAlignment abi with
+  | none   => throw $ "invalid pointer alignment: " ++ (Nat.toDigits 10 abi).asString
+  | some a => pure { dl with ptrSize := sz, ptrAlign := a }
+| alignSize tp sz abi _pref =>
+  match toAlignment abi with
+  | none   => throw $ "invalid alignment: " ++ (Nat.toDigits 10 abi).asString
+  | some a =>
+    match tp with
+    | integer   => pure (addIntegerAlignment sz a dl)
+    | vector    => pure (addVectorAlignment  sz a dl)
+    | float     => pure (addFloatAlignment   sz a dl)
 | _ => pure dl -- ignore other layout specs
 
-def computeDataLayout (ls:List layout_spec) : Except String data_layout :=
-  List.foldlM addLayoutSpec default_data_layout ls.
+end LayoutSpec
 
-end llvm.
+def computeDataLayout (ls:List LayoutSpec) : Except String DataLayout :=
+  List.foldlM addLayoutSpec default_data_layout ls
+
+end LLVM

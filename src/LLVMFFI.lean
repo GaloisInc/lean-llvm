@@ -9,7 +9,8 @@ Lean declarations to link against LLVM C++ declarations.
 import Init.Core
 import LeanLLVM.LLVMCodes
 
-namespace llvm.ffi
+namespace LLVM
+namespace FFI
 
 constant Context := Unit
 constant Type_ := Unit
@@ -37,7 +38,7 @@ def newContext : IO Context := arbitrary _
 -- Types
 
 @[extern 2 "lean_llvm_getTypeTag"]
-def getTypeTag : @& Type_ -> IO llvm.code.type := arbitrary _
+def getTypeTag : @& Type_ -> IO Code.TypeID := arbitrary _
 
 @[extern 2 "lean_llvm_getTypeName"]
 def getTypeName : @& Type_ -> IO (Option String) := arbitrary _
@@ -61,7 +62,7 @@ def getStructTypeData : @&Type_ -> IO (Option (Bool × Array Type_)) := arbitrar
 def getFunctionTypeData : @&Type_ -> IO (Option (Type_ × (Array Type_ × Bool))) := arbitrary _
 
 @[extern 3 "lean_llvm_newPrimitiveType"]
-def newPrimitiveType : @& Context → @& llvm.code.type → IO Type_ := arbitrary _
+def newPrimitiveType : @& Context → @& Code.TypeID → IO Type_ := arbitrary _
 
 @[extern 3 "lean_llvm_newIntegerType"]
 def newIntegerType : @& Context → @& Nat → IO Type_ := arbitrary _
@@ -93,15 +94,15 @@ def setStructTypeBody : @& Type_ → @& Bool → @& Array Type_ → IO Unit := a
 @[extern 2 "lean_llvm_getValueType"]
 def getValueType : @& Value -> IO Type_ := arbitrary _
 
-inductive value_decomposition
-| unknown_value     : value_decomposition
-| constant_value    : Constant -> value_decomposition
-| argument_value    : Nat -> value_decomposition
-| block_value       : BasicBlock -> value_decomposition
-| instruction_value : Instruction -> value_decomposition
+inductive ValueView
+| unknown
+| constantView (c:Constant)
+| argument (a:Nat)
+| block (b:BasicBlock)
+| instruction (i:Instruction)
 
 @[extern 2 "lean_llvm_decomposeValue"]
-def decomposeValue : @& Value -> IO value_decomposition := arbitrary _
+def decomposeValue : @& Value -> IO ValueView := arbitrary _
 
 def functionToValue (f:Function)       : Value := f
 def basicBlockToValue (bb:BasicBlock)  : Value := bb
@@ -115,14 +116,14 @@ def constantToValue (c:Constant)       : Value := c
 def getConstantName : @& Constant -> IO (Option String) := arbitrary _
 
 @[extern 2 "lean_llvm_getConstantTag"]
-def getConstantTag : @&Constant -> IO llvm.code.const := arbitrary _
+def getConstantTag : @&Constant -> IO Code.Const := arbitrary _
 
 -- return bitwidth and value
 @[extern 2 "lean_llvm_getConstIntData"]
 def getConstIntData : @& Constant -> IO (Option (Nat × Nat)) := arbitrary _
 
 @[extern 2 "lean_llvm_getConstExprData"]
-def getConstExprData : @& Constant -> IO (Option (llvm.code.instr × Array Constant)) := arbitrary _
+def getConstExprData : @& Constant -> IO (Option (Code.Instr × Array Constant)) := arbitrary _
 
 @[extern 2 "lean_llvm_getConstArrayData"]
 def getConstArrayData : @& Constant -> IO (Option (Type_ × Array Constant)) := arbitrary _
@@ -140,7 +141,7 @@ def getInstructionName : @& Instruction -> IO (Option String) := arbitrary _
 def getInstructionType : @& Instruction -> IO Type_ := arbitrary _
 
 @[extern 2 "lean_llvm_getInstructionOpcode"]
-def getInstructionOpcode : @& Instruction -> IO llvm.code.instr := arbitrary _
+def getInstructionOpcode : @& Instruction -> IO Code.Instr := arbitrary _
 
 @[extern 2 "lean_llvm_getInstructionReturnValue"]
 def getInstructionReturnValue : @& Instruction -> IO (Option Value) := arbitrary _
@@ -158,18 +159,17 @@ def hasNoUnsignedWrap : @& Instruction -> IO Bool := arbitrary _
 def isExact : @&Instruction -> IO Bool := arbitrary _
 
 @[extern 2 "lean_llvm_getICmpInstData"]
-def getICmpInstData : @& Instruction -> IO (Option (llvm.code.icmp × (Value × Value))) := arbitrary _
+def getICmpInstData : @& Instruction -> IO (Option (Code.ICmp × (Value × Value))) := arbitrary _
 
 @[extern 2 "lean_llvm_getSelectInstData"]
 def getSelectInstData : @& Instruction -> IO (Option (Value × (Value × Value))) := arbitrary _
 
-
-inductive branch_decomposition
-| unconditional : BasicBlock → branch_decomposition
-| conditional : Value → BasicBlock → BasicBlock → branch_decomposition
+inductive BranchView
+| unconditional (b:BasicBlock)
+| conditional (c:Value) (t f : BasicBlock)
 
 @[extern 2 "lean_llvm_getBranchInstData"]
-def getBranchInstData : @& Instruction -> IO (Option branch_decomposition) := arbitrary _
+def getBranchInstData : @& Instruction -> IO (Option BranchView) := arbitrary _
 
 @[extern 2 "lean_llvm_getPhiData"]
 def getPhiData : @& Instruction -> IO (Option (Array (Value × BasicBlock))) := arbitrary _
@@ -275,4 +275,5 @@ def processTriple : Unit → String := arbitrary _
 @[extern "lean_llvm_newTriple"]
 constant newTriple : String → Triple := arbitrary _
 
-end llvm.ffi.
+end FFI
+end LLVM

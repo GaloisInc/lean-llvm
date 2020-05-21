@@ -9,17 +9,17 @@ import LeanLLVM.AST
 import LeanLLVM.Alignment
 import LeanLLVM.DataLayout
 
-namespace llvm.
+namespace LLVM
 
 structure fieldInfo (α:Type) :=
-  ( value   : α )
-  ( offset  : bytes ) -- offset from the beginning of the struct
-  ( padding : bytes ). -- number of padding bytes following this field
+(value   : α)
+(offset  : Nat) -- offset from the beginning of the struct
+(padding : Nat) -- number of padding bytes following this field
 
 structure structInfo (α:Type) :=
-  ( fields : Array (fieldInfo α) )
-  ( size : bytes )
-  ( alignment : alignment ).
+(fields : Array (fieldInfo α))
+(size : Nat)
+(alignment : Alignment)
 
 mutual inductive sym_type, mem_type, fun_decl
 with sym_type : Type
@@ -28,7 +28,7 @@ with sym_type : Type
   | fun_type : fun_decl → sym_type
   | void     : sym_type
   | opaque   : sym_type
-  | unsupported : llvm_type → sym_type
+  | unsupported : LLVMType → sym_type
 
 with mem_type : Type
   | ptr      : sym_type → mem_type
@@ -44,66 +44,64 @@ with mem_type : Type
 
 with fun_decl : Type
   | fun_decl : ∀(ret : Option mem_type) (args : List mem_type) (varargs : Bool), fun_decl
-.
 
 namespace mem_type.
 
-partial def szAndAlign (dl:data_layout) : mem_type → (bytes × alignment)
-| (ptr _)            => (dl.ptr_size, dl.ptr_align)
-| (int n)            => (toBytes n, computeIntegerAlignment dl.integer_info n)
-| (array n tp)       =>
-     let (sz,a) := szAndAlign tp;
-     ((padToAlignment sz a).mul n, a)
-| (vector n tp)      =>
-     let (sz,a) := szAndAlign tp;
-     let vsz := sz.mul n;
-     (vsz, computeVectorAlignment dl.vector_info vsz.toBits)
-| (struct si)        => (si.size, si.alignment)
-| metadata           => (bytes.mk 0, noAlignment)
-.
+partial def szAndAlign (dl:DataLayout) : mem_type → Nat × Alignment
+| ptr _            => (dl.ptrSize, dl.ptrAlign)
+| int n            => ((n+7)/8, computeIntegerAlignment dl.integerInfo n)
+| array n tp       =>
+  let (sz,a) := szAndAlign tp;
+  (n * padToAlignment sz a, a)
+| vector n tp      =>
+  let (sz,a) := szAndAlign tp;
+  let vsz := n * sz;
+  (vsz, computeVectorAlignment dl.vectorInfo (8*vsz))
+| struct si        => (si.size, si.alignment)
+| metadata         => (0, unaligned)
 
-@[reducible]
-def sz (dl:data_layout) (mt:mem_type) : bytes := (szAndAlign dl mt).1
+def sz (dl:DataLayout) (mt:mem_type) : Nat := (szAndAlign dl mt).1
 
-@[reducible]
-def alignment (dl:data_layout) (mt:mem_type) : alignment := (szAndAlign dl mt).2
+def alignment (dl:DataLayout) (mt:mem_type) : Alignment := (szAndAlign dl mt).2
 
 end mem_type.
 
-def compute_struct_info_aux (dl:data_layout) : bytes → alignment → Array (fieldInfo mem_type) → mem_type → List mem_type → structInfo mem_type
+def compute_struct_info_aux (dl:DataLayout)
+: Nat → Alignment → Array (fieldInfo mem_type) → mem_type → List mem_type → structInfo mem_type
 | sz, a, fs, t, [] =>
-    let sz' := sz.add (t.sz dl);
-    let a'  := maxAlignment a (t.alignment dl);
-    let fs' := fs.push { value := t, offset := sz, padding := bytes.mk 0 };
-    { fields := fs', size := sz', alignment := a' }
+  let sz' := sz.add (t.sz dl);
+  let a'  := maxAlignment a (t.alignment dl);
+  let fs' := fs.push { value := t, offset := sz, padding := 0 };
+  { fields := fs', size := sz', alignment := a' }
 
 | sz, a, fs, t, t'::ts =>
-    let tsz  := t.sz dl;
-    let tend := sz.add tsz;
-    let sz'  := padToAlignment tend (t'.alignment dl);
-    let a'   := maxAlignment a (t.alignment dl);
-    let fs'  := fs.push { value := t, offset := sz, padding := bytes.mk (sz'.val - tend.val) };
-    compute_struct_info_aux sz' a' fs' t' ts
+  let ⟨tsz,talign⟩ := mem_type.szAndAlign dl t;
+  let tend := sz + tsz;
+  let sz'  := padToAlignment tend (t'.alignment dl);
+  let a'   := maxAlignment a talign;
+  let fs'  := fs.push { value := t, offset := sz, padding := sz' - tend };
+  compute_struct_info_aux sz' a' fs' t' ts
 
-def compute_struct_info (dl:data_layout) : List mem_type -> structInfo mem_type
-| []    => { fields := Array.empty, size := bytes.mk 0, alignment := noAlignment }
-| t::ts => compute_struct_info_aux dl (bytes.mk 0) dl.aggregate_alignment Array.empty t ts
+def compute_struct_info (dl:DataLayout) : List mem_type -> structInfo mem_type
+| []    => { fields := Array.empty, size := 0, alignment := unaligned }
+| t::ts => compute_struct_info_aux dl 0 dl.aggregateAlignment Array.empty t ts
 
-def compute_packed_struct_info_aux (dl:data_layout) : bytes → Array (fieldInfo mem_type) → List mem_type -> structInfo mem_type
-| sz, fs, [] => { fields := fs, size := sz, alignment := noAlignment }
+def compute_packed_struct_info_aux (dl:DataLayout)
+: Nat → Array (fieldInfo mem_type) → List mem_type -> structInfo mem_type
+| sz, fs, [] => { fields := fs, size := sz, alignment := unaligned }
 | sz, fs, t::ts =>
-    let sz' := sz.add (t.sz dl);
-    let fs' := fs.push { value := t, offset := sz, padding := bytes.mk 0 };
-    compute_packed_struct_info_aux sz' fs' ts
+  let sz' := sz.add (t.sz dl);
+  let fs' := fs.push { value := t, offset := sz, padding := 0 };
+  compute_packed_struct_info_aux sz' fs' ts
 
-def compute_packed_struct_info (dl:data_layout) : List mem_type → structInfo mem_type :=
-  compute_packed_struct_info_aux dl (bytes.mk 0) Array.empty
+def compute_packed_struct_info (dl:DataLayout) : List mem_type → structInfo mem_type :=
+  compute_packed_struct_info_aux dl 0 Array.empty
 
 instance sym_type.inh : Inhabited sym_type := ⟨sym_type.void⟩
 instance mem_type.inh : Inhabited mem_type := ⟨mem_type.ptr sym_type.void⟩
 
-def lookup_td (tds:Array type_decl) (i:String) : Option type_decl_body :=
-  Option.map type_decl.decl
+def lookup_td (tds:Array TypeDecl) (i:String) : Option TypeDeclBody :=
+  Option.map TypeDecl.decl
   (tds.find? (λtd =>
    match decEq td.name i with
    | Decidable.isTrue _  => true
@@ -111,78 +109,76 @@ def lookup_td (tds:Array type_decl) (i:String) : Option type_decl_body :=
    )).
 
 
-partial def lift_sym_type (dl:data_layout) (lift_mem_type : llvm_type → Option mem_type) (tds:Array type_decl) : llvm_type → sym_type
-| t@(llvm_type.prim_type pt) =>
-     (match pt with
-     | prim_type.label     => sym_type.unsupported t
-     | prim_type.token     => sym_type.unsupported t
-     | prim_type.void      => sym_type.void
-     | prim_type.integer n => sym_type.mem_type (mem_type.int n)
-     | prim_type.metadata  => sym_type.mem_type mem_type.metadata
-     | prim_type.float_type _ => sym_type.unsupported t
-     | prim_type.x86mmx       => sym_type.unsupported t)
+partial def lift_sym_type (dl:DataLayout) (lift_mem_type : LLVMType → Option mem_type) (tds:Array TypeDecl)
+: LLVMType → sym_type
+| t@(LLVMType.prim pt) =>
+  match pt with
+  | PrimType.label        => sym_type.unsupported t
+  | PrimType.token        => sym_type.unsupported t
+  | PrimType.void         => sym_type.void
+  | PrimType.integer n    => sym_type.mem_type (mem_type.int n)
+  | PrimType.metadata     => sym_type.mem_type mem_type.metadata
+  | PrimType.floatType _  => sym_type.unsupported t
+  | PrimType.x86mmx       => sym_type.unsupported t
 
-| (llvm_type.alias i) => sym_type.ty_alias i
+| LLVMType.alias i => sym_type.ty_alias i
 
-| t@(llvm_type.fun_ty ret args va) =>
+| t@(LLVMType.funType ret args va) =>
      let mt : Option fun_decl := (do
           lift_mem_type ret >>= λret' =>
             List.mapM lift_mem_type args.toList >>= λargs' =>
             pure (fun_decl.fun_decl ret' args' va));
      Option.casesOn mt (sym_type.unsupported t) sym_type.fun_type
 
-| (llvm_type.ptr_to t') => sym_type.mem_type (mem_type.ptr (lift_sym_type t'))
+| LLVMType.ptr t' => sym_type.mem_type (mem_type.ptr (lift_sym_type t'))
 
-| t@(llvm_type.array n tp) =>
-    (match lift_mem_type tp with
-     | none   => sym_type.unsupported t
-     | some m => sym_type.mem_type (mem_type.array n m))
+| t@(LLVMType.array n tp) =>
+  match lift_mem_type tp with
+  | none   => sym_type.unsupported t
+  | some m => sym_type.mem_type (mem_type.array n m)
 
-| t@(llvm_type.vector n tp) =>
-    (match lift_mem_type tp with
-     | none   => sym_type.unsupported t
-     | some m => sym_type.mem_type (mem_type.vector n m))
+| t@(LLVMType.vector n tp) =>
+  match lift_mem_type tp with
+  | none   => sym_type.unsupported t
+  | some m => sym_type.mem_type (mem_type.vector n m)
 
-| t@(llvm_type.struct false fs) =>
+| t@(LLVMType.struct false fs) =>
      let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
 
-| t@(llvm_type.struct true fs) =>
+| t@(LLVMType.struct true fs) =>
      let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
      Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_packed_struct_info dl)
-.
 
-partial def lift_mem_type (dl:data_layout) (tds:Array type_decl) : llvm_type → Option mem_type
-| llvm_type.prim_type pt =>
+partial def lift_mem_type (dl:DataLayout) (tds:Array TypeDecl) : LLVMType → Option mem_type
+| LLVMType.prim pt =>
   match pt with
-  | prim_type.integer n      => some (mem_type.int n)
-  | prim_type.metadata       => some mem_type.metadata
-  | prim_type.label          => none
-  | prim_type.token          => none
-  | prim_type.void           => none
-  | prim_type.float_type _   => none
-  | prim_type.x86mmx         => none
-| llvm_type.ptr_to tp        => some (mem_type.ptr (lift_sym_type dl lift_mem_type tds tp))
-| llvm_type.alias i          =>
+  | PrimType.integer n   => some (mem_type.int n)
+  | PrimType.metadata    => some mem_type.metadata
+  | PrimType.label       => none
+  | PrimType.token       => none
+  | PrimType.void        => none
+  | PrimType.floatType _ => none
+  | PrimType.x86mmx      => none
+| LLVMType.ptr tp        => some (mem_type.ptr (lift_sym_type dl lift_mem_type tds tp))
+| LLVMType.alias i       =>
      do b <- lookup_td tds i;
         match b with
-        | type_decl_body.opaque   => none
-        | type_decl_body.defn tp' => lift_mem_type tp'
-| llvm_type.struct false fs  => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
-| llvm_type.struct true fs   => (mem_type.struct ∘ compute_packed_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
-| llvm_type.array n tp       => mem_type.array n <$> lift_mem_type tp
-| llvm_type.vector n tp      => mem_type.vector n <$> lift_mem_type tp
-| llvm_type.fun_ty _ _ _     => none
-.
+        | TypeDeclBody.opaque   => none
+        | TypeDeclBody.defn tp' => lift_mem_type tp'
+| LLVMType.struct false fs  => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
+| LLVMType.struct true fs   => (mem_type.struct ∘ compute_packed_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
+| LLVMType.array n tp       => mem_type.array n <$> lift_mem_type tp
+| LLVMType.vector n tp      => mem_type.vector n <$> lift_mem_type tp
+| LLVMType.funType _ _ _     => none
 
-def sym_type_to_mem_type (dl:data_layout) (tds:Array type_decl) : sym_type -> Option mem_type
+def sym_type_to_mem_type (dl:DataLayout) (tds:Array TypeDecl) : sym_type -> Option mem_type
 | sym_type.mem_type mt => some mt
 | sym_type.ty_alias i  =>
    do b <- lookup_td tds i;
       match b with
-      | type_decl_body.opaque => none
-      | type_decl_body.defn tp => lift_mem_type dl tds tp
+      | TypeDeclBody.opaque => none
+      | TypeDeclBody.defn tp => lift_mem_type dl tds tp
 | _ => none
 
-
-end llvm.
+end LLVM

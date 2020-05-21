@@ -7,35 +7,32 @@ import LeanLLVM.PP
 import LeanLLVM.TypeContext
 
 
-namespace llvm.
-namespace sim.
+namespace LLVM
+namespace Sim
 
-inductive value : Type
-| bv       (w : Nat) : bitvec w → value
-| vec    : mem_type → Array value → value
-| array  : mem_type → Array value → value
-| struct : Array (fieldInfo value) → value
-.
+inductive Value : Type
+| bv {w : Nat} (x:bitvec w)
+| vec (eltTp:mem_type) (x:Array Value)
+| array (eltTp:mem_type) (values:Array Value)
+| struct (fields:Array (fieldInfo Value))
 
+namespace Value
 
-namespace value.
+partial def pretty : Value → Doc
+| bv x => Doc.text x.pp_hex
+| vec _mt xs   => Doc.angles (Doc.commas (xs.toList.map pretty))
+| array _mt xs => Doc.brackets (Doc.commas (xs.toList.map pretty))
+| struct fs => Doc.braces (Doc.commas (fs.toList.map (λfi => pretty fi.value)))
 
-partial def pretty : value → pp.doc
-| bv w x => pp.text x.pp_hex
-| vec _mt xs   => pp.angles (pp.commas (xs.toList.map pretty))
-| array _mt xs => pp.brackets (pp.commas (xs.toList.map pretty))
-| struct fs => pp.braces (pp.commas (fs.toList.map (λfi => pretty fi.value)))
+def asString (v:Value) : String := Doc.render (pretty v)
 
-def asString (v:value) : String := pp.render (pretty v)
-
-end value.
-
+end Value
 
 @[reducible]
 def memMap := @RBMap (bitvec 64) (bitvec 8) (λx y => decide (bitvec.ult x y)).
 
 @[reducible]
-def regMap := @RBMap ident value (λx y => decide (x < y)).
+def regMap := @RBMap Ident Value (λx y => decide (x < y)).
 
-end sim.
-end llvm.
+end Sim
+end LLVM

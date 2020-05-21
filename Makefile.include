@@ -1,3 +1,7 @@
+ifndef LLVM_INCLUDE
+$(error Define LLVM_INCLUDE)
+endif
+
 HERE := $(abspath $(dir $(realpath $(lastword $(MAKEFILE_LIST)))))
 LOCALFILES := src/Alignment.lean\
   src/AST.lean\
@@ -23,4 +27,4 @@ EXTRACXXFILES += $(patsubst %,${HERE}/%,${LOCAL_CXX})
 LEAN_PATH := ${LEAN_PATH}:LeanLLVM=${HERE}/src
 
 $(HERE)/src/LLVMCodes.lean : $(HERE)/src/LLVMCodes.lean.in
-	$(CXX) -E -P -I$(LLVM_INCLUDE) -o $@ -x c $<
+	$(CPP) -P -I$(LLVM_INCLUDE) -o $@ -x c $<
