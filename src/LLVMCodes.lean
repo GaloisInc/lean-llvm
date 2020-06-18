@@ -1,18 +1,18 @@
-namespace llvm.
-namespace code.
+namespace LLVM
+namespace Code
 
 -- C.F. <llvm/IR/Type.h>, Type::TypeID
-inductive type : Type
+inductive TypeID : Type
 | void
 | half
 | float
 | double
-| x86_fp80
+| x86FP80
 | fp128
-| ppc_fp128
+| ppcFP128
 | label
 | metadata
-| x86_mmx
+| x86mmx
 | token
 | integer
 | function
@@ -20,20 +20,19 @@ inductive type : Type
 | array
 | pointer
 | vector
-.
 
-namespace type.
-def asString : type -> String
+namespace TypeID
+def asString : TypeID -> String
 | void => "void"
 | half => "half"
 | float => "float"
 | double => "double"
-| x86_fp80 => "x86_fp80"
+| x86FP80 => "x86_fp80"
 | fp128 => "fp128"
-| ppc_fp128 => "ppc_fp128"
+| ppcFP128 => "ppc_fp128"
 | label => "label"
 | metadata => "metadata"
-| x86_mmx => "x86_mmx"
+| x86mmx => "x86_mmx"
 | token => "token"
 | integer => "integer"
 | function => "function"
@@ -41,13 +40,14 @@ def asString : type -> String
 | array => "array"
 | pointer => "pointer"
 | vector => "vector"
-.
 
-end type.
+end TypeID
 
-
-
-inductive instr : Type
+-- | Instruction type tag
+--
+-- Note. Constructor names are generated from LLVM files and capitalized
+-- according to names in files.
+inductive Instr : Type
 | Unused -- Burn constructor number 0, which is not used for any instruction value
 
 
@@ -143,10 +143,9 @@ inductive instr : Type
 | ExtractValue
 | InsertValue
 | LandingPad
-.
 
-namespace instr.
-def asString : instr -> String
+namespace Instr
+def asString : Instr -> String
 | Unused => "Unused"
 
 
@@ -242,11 +241,14 @@ def asString : instr -> String
 | ExtractValue => "ExtractValue"
 | InsertValue => "InsertValue"
 | LandingPad => "LandingPad"
-.
-end instr.
 
+end Instr
 
-inductive const : Type
+-- | Const type tag
+--
+-- Note. Constructor names are generated from LLVM files and capitalized
+-- according to names in files.
+inductive Const : Type
 
 
 | Function
@@ -270,10 +272,9 @@ inductive const : Type
 | ConstantFP
 | ConstantPointerNull
 | ConstantTokenNone
-.
 
-namespace const.
-def asString : const -> String
+namespace Const
+def asString : Const -> String
 
 
 | Function => "Function"
@@ -297,12 +298,11 @@ def asString : const -> String
 | ConstantFP => "ConstantFP"
 | ConstantPointerNull => "ConstantPointerNull"
 | ConstantTokenNone => "ConstantTokenNone"
-.
-end const.
 
+end Const
 
 -- C.F. llvm/IR/InstrTypes.h, enum Predicate
-inductive fcmp
+inductive FCmp
 | false
 | oeq
 | ogt
@@ -319,10 +319,9 @@ inductive fcmp
 | ule
 | une
 | true
-.
 
-namespace fcmp
-def asString : fcmp -> String
+namespace FCmp
+def asString : FCmp -> String
 | false => "false"
 | oeq => "oeq"
 | ogt => "ogt"
@@ -339,12 +338,12 @@ def asString : fcmp -> String
 | ule => "ule"
 | une => "une"
 | true => "true"
-.
-end fcmp
+
+end FCmp
 
 
 -- C.F. llvm/IR/InstrTypes.h, enum Predicate
-inductive icmp
+inductive ICmp
 | eq
 | ne
 | ugt
@@ -355,10 +354,10 @@ inductive icmp
 | sge
 | slt
 | sle
-.
 
-namespace icmp.
-def asString : icmp -> String
+namespace ICmp
+
+def asString : ICmp -> String
 | eq => "eq"
 | ne => "ne"
 | ugt => "ugt"
@@ -369,10 +368,8 @@ def asString : icmp -> String
 | sge => "sge"
 | slt => "slt"
 | sle => "sle"
-.
 
-end icmp.
+end ICmp
 
-
-end code.
-end llvm.
+end Code
+end LLVM
