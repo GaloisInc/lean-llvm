@@ -70,7 +70,7 @@ assignment, e.g.,
 Match expressions
 -----------------
 
-Each case in a match has the underscore aligned with the match statement, .e.g.,
+Each case in a match has the vertical bar aligned with the match statement, .e.g.,
 
 ```
   match id with
