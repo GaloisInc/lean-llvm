@@ -234,6 +234,9 @@ def getGlobalVarData : @& GlobalVar → IO (Option (String × (Option Value × N
 @[extern 3 "lean_llvm_parseBitcodeFile"]
 def parseBitcodeFile : @&MemoryBuffer → Context → IO Module := arbitrary _
 
+@[extern 3 "lean_llvm_parseAssembly"]
+def parseAssembly : @&MemoryBuffer → Context → IO Module := arbitrary _
+
 @[extern 2 "lean_llvm_printModule"]
 def printModule : @& Module -> IO Unit := arbitrary _
 
