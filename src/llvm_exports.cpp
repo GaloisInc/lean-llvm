@@ -9,10 +9,12 @@ from Lean.
 #include <iostream>
 
 #include <llvm/ADT/Triple.h>
+#include <llvm/AsmParser/Parser.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/SourceMgr.h>
 
 #include <runtime/apply.h>
 #include <runtime/io.h>
@@ -301,7 +303,7 @@ llvm::Module* toModule(b_obj_arg o) {
     return p->module.get();
 }
 
-/** Create an object from an LLVM error. */
+/** Create an object (string) from an LLVM error. */
 obj_res errorMsgObj(llvm::Error e) {
     std::string msg;
     handleAllErrors(std::move(e), [&](llvm::ErrorInfoBase &eib) {
@@ -1020,10 +1022,42 @@ obj_res lean_llvm_parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     auto moduleOrErr = parseBitcodeFile(buf, *ctx);
     if (!moduleOrErr) {
 	dec_ref(ctxObj);
+    // FIXME: this seems to _not_ be the way to report an error to Lean4's IO
+    //        but is close (i.e., the similar code below using `parseAssembly`
+    //        seemed to correctly report the underlying LLVM error message)
+    // E.g., call this with an LLVM assembly file instead of a bitcode
+    //       file and things blow up unpleasantly inside of Lean4 with
+    //       an internal assertion failure when it tries to actually
+    //       report the underlying IO error.
 	return set_io_error( errorMsgObj(moduleOrErr.takeError()));
     }
 
     return set_io_result(allocModuleObj(ctxObj, std::move(*moduleOrErr)));
+}
+
+obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
+  std::string dataLayoutStr = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"; // FIXME take term defined in `DataLayout.lean` and toString it
+  llvm::SMDiagnostic parseAsmError;
+  auto ctx = toLLVMContext(ctxObj);
+  llvm::MemoryBufferRef buf = toMemoryBuffer(b)->getMemBufferRef();
+
+  std::unique_ptr<llvm::Module> m = parseAssembly(buf,
+                                                  parseAsmError,
+                                                  *ctx,
+                                                  nullptr, /* Slots ptr */
+                                                  true, /* UpgradeDebugInfo */
+                                                  dataLayoutStr);
+  if (!m.get()) {
+    dec_ref(ctxObj);
+
+    std::string errMsg;
+    llvm::raw_string_ostream errMsgOStream(errMsg);
+    parseAsmError.print("", errMsgOStream);
+
+    return set_io_error( mk_string(errMsgOStream.str()) );
+  }
+
+  return set_io_result(allocModuleObj(ctxObj, std::move(m)));
 }
 
 obj_res lean_llvm_newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
