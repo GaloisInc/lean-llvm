@@ -303,14 +303,6 @@ llvm::Module* toModule(b_obj_arg o) {
     return p->module.get();
 }
 
-/** Create an object (string) from an LLVM error. */
-obj_res errorMsgObj(llvm::Error e) {
-    std::string msg;
-    handleAllErrors(std::move(e), [&](llvm::ErrorInfoBase &eib) {
-        msg = eib.message();
-    });
-    return mk_string(msg);
-}
 
 ////////////////////////////////////////////////////////////////////////
 // Triple
@@ -344,7 +336,8 @@ obj_res lean_llvm_newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
 
     auto MBOrErr = llvm::MemoryBuffer::getFile(path);
     if (std::error_code EC = MBOrErr.getError()) {
-	return set_io_error(mk_string(EC.message()));
+      std::string errMsg = "newMemoryBufferFromFile failed (" + EC.message() + ")";
+      return set_io_error( errMsg.c_str() );
     }
 
  auto b = std::move(MBOrErr.get());
@@ -1022,14 +1015,11 @@ obj_res lean_llvm_parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     auto moduleOrErr = parseBitcodeFile(buf, *ctx);
     if (!moduleOrErr) {
 	dec_ref(ctxObj);
-    // FIXME: this seems to _not_ be the way to report an error to Lean4's IO
-    //        but is close (i.e., the similar code below using `parseAssembly`
-    //        seemed to correctly report the underlying LLVM error message)
-    // E.g., call this with an LLVM assembly file instead of a bitcode
-    //       file and things blow up unpleasantly inside of Lean4 with
-    //       an internal assertion failure when it tries to actually
-    //       report the underlying IO error.
-	return set_io_error( errorMsgObj(moduleOrErr.takeError()));
+    std::string errMsg = "parseBitcodeFile failed (unknown reason)";
+    handleAllErrors(std::move(moduleOrErr.takeError()), [&](llvm::ErrorInfoBase &eib) {
+        errMsg = "parseBitcodeFile failed (" + eib.message() + ")";
+    });
+	return set_io_error( errMsg.c_str() );
     }
 
     return set_io_result(allocModuleObj(ctxObj, std::move(*moduleOrErr)));
@@ -1053,8 +1043,8 @@ obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     std::string errMsg;
     llvm::raw_string_ostream errMsgOStream(errMsg);
     parseAsmError.print("", errMsgOStream);
-
-    return set_io_error( mk_string(errMsgOStream.str()) );
+    errMsg = "parseAssembly failed (" + errMsgOStream.str() + ")";
+    return set_io_error( errMsg.c_str() );
   }
 
   return set_io_result(allocModuleObj(ctxObj, std::move(m)));
@@ -1197,7 +1187,8 @@ obj_res lean_llvm_getConstExprData (b_obj_arg c_obj, obj_arg r ) {
       *(p++) = allocValueObj(parent, cop);
     } else {
       // FIXME... leaks memory here?
-      return set_io_error( mk_string("Expected constant value argument to constant expr!") );
+      std::string errMsg = "getConstExprData failed (expected constant value argument to constant expr)";
+      return set_io_error( errMsg.c_str() );
     }
   }
   return set_io_result( mk_option_some( mk_pair( box(opcode), arr )) );
