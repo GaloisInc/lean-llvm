@@ -765,3 +765,5 @@ instance : HasPP Module := ⟨ppDoc⟩
 end Module
 
 end LLVM
+
+def ppLLVM {α} [LLVM.HasPP α] (a : α) : String := LLVM.Doc.render $ LLVM.HasPP.pp a
