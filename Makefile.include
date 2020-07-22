@@ -11,6 +11,7 @@ LOCALFILES := src/Alignment.lean\
   src/LLVMFFI.lean \
   src/LLVMLib.lean\
   src/LLVMOutput.lean\
+  src/Load.lean\
   src/Memory.lean\
   src/SimMonad.lean\
   src/Simulate.lean\

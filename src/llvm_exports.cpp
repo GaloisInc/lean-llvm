@@ -1015,9 +1015,9 @@ obj_res lean_llvm_parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     auto moduleOrErr = parseBitcodeFile(buf, *ctx);
     if (!moduleOrErr) {
 	dec_ref(ctxObj);
-    std::string errMsg = "parseBitcodeFile failed (unknown reason)";
+    std::string errMsg = "unknown failure";
     handleAllErrors(std::move(moduleOrErr.takeError()), [&](llvm::ErrorInfoBase &eib) {
-        errMsg = "parseBitcodeFile failed (" + eib.message() + ")";
+        errMsg = eib.message();
     });
 	return set_io_error( errMsg.c_str() );
     }
@@ -1025,8 +1025,8 @@ obj_res lean_llvm_parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     return set_io_result(allocModuleObj(ctxObj, std::move(*moduleOrErr)));
 }
 
-obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
-  std::string dataLayoutStr = "e-m:e-i64:64-f80:128-n8:16:32:64-S128"; // FIXME take term defined in `DataLayout.lean` and toString it
+obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, b_obj_arg dataLayoutStrObj, obj_arg r) {
+  std::string dataLayoutStr = w_string_cstr(dataLayoutStrObj);
   llvm::SMDiagnostic parseAsmError;
   auto ctx = toLLVMContext(ctxObj);
   llvm::MemoryBufferRef buf = toMemoryBuffer(b)->getMemBufferRef();
@@ -1043,7 +1043,7 @@ obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     std::string errMsg;
     llvm::raw_string_ostream errMsgOStream(errMsg);
     parseAsmError.print("", errMsgOStream);
-    errMsg = "parseAssembly failed (" + errMsgOStream.str() + ")";
+    errMsg = errMsgOStream.str();
     return set_io_error( errMsg.c_str() );
   }
 

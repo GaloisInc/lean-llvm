@@ -228,14 +228,29 @@ def getBasicBlockArray : @& Function -> IO (Array BasicBlock) := arbitrary _
 @[extern 2 "lean_llvm_getGlobalVarData"]
 def getGlobalVarData : @& GlobalVar → IO (Option (String × (Option Value × Nat))) := arbitrary _
 
+
 ------------------------------------------------------------------------
--- Module
+-- File Parsing
+
+namespace Prim
+-- The non-"Prim" versions of these functions appear in `Load.lean`
 
 @[extern 3 "lean_llvm_parseBitcodeFile"]
 def parseBitcodeFile : @&MemoryBuffer → Context → IO Module := arbitrary _
 
-@[extern 3 "lean_llvm_parseAssembly"]
-def parseAssembly : @&MemoryBuffer → Context → IO Module := arbitrary _
+@[extern 4 "lean_llvm_parseAssembly"]
+def parseAssembly :
+@&MemoryBuffer
+→ Context
+ → String -- ^ data layout string
+ → IO Module := arbitrary _
+
+end Prim
+
+
+
+------------------------------------------------------------------------
+-- Module
 
 @[extern 2 "lean_llvm_printModule"]
 def printModule : @& Module -> IO Unit := arbitrary _
