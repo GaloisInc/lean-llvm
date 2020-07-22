@@ -1,7 +1,8 @@
 
-import Init.Data.RBMap
+import Std.Data.RBMap
+open Std (RBMap)
 
-
+namespace Std
 namespace RBNode
 universes u v
 variables {α : Type u} {β : α → Type v}
@@ -18,7 +19,9 @@ variable (lt : α → α → Bool)
 end
 
 end RBNode
+end Std
 
+namespace Std
 namespace RBMap
 universes u v
 variables {α : Type u} {β : Type v} {lt : α → α → Bool}
@@ -29,6 +32,7 @@ variables {α : Type u} {β : Type v} {lt : α → α → Bool}
 | ⟨t, _⟩, x => t.upperBound lt x none
 
 end RBMap
+end Std
 
 namespace LLVM
 

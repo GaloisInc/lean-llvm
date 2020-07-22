@@ -3,11 +3,13 @@ import Init.Control.Applicative
 import Init.Control.Monad
 import Init.Data.Array
 import Init.Data.List
-import Init.Data.RBMap
+import Std.Data.RBMap
 
 import LeanLLVM.AST
 import LeanLLVM.Alignment
 import LeanLLVM.DataLayout
+
+open Std (RBMap)
 
 namespace LLVM
 

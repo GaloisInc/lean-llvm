@@ -300,7 +300,7 @@ partial def execBlock {z}
 
 def assignArgs : List (Typed Ident) → List Sim.Value → regMap → Sim regMap
 | [], [], regs => pure regs
-| f::fs, a::as, regs => assignArgs fs as (RBMap.insert regs f.value a)
+| f::fs, a::as, regs => assignArgs fs as (Std.RBMap.insert regs f.value a)
 | _, _, _ => throw (IO.userError ("Acutal/formal argument mismatch")).
 
 def entryLabel (d:Define) : Sim BlockLabel :=
@@ -313,7 +313,7 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z) (ktrace : trace_event �
 
 | kret, s, args, st =>
    (do func   <- findFunc s st.mod;
-       locals <- assignArgs func.args.toList args RBMap.empty;
+       locals <- assignArgs func.args.toList args Std.RBMap.empty;
        lab    <- entryLabel func;
        Sim.setFrame (frame.mk locals func lab none st.stackPtr);
        findBlock lab func >>= evalStmts

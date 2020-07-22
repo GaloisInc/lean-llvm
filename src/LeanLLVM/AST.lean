@@ -1,8 +1,10 @@
 /- A transliteration of llvm-pretty https://github.com/elliottt/llvm-pretty/blob/master/src/Text/LLVM/AST.hs -/
 -- import data.bitvec
-import Init.Data.RBMap
+import Std.Data.RBMap
 import Init.Data.String
 import Init.Data.Int
+
+open Std (RBMap)
 
 namespace LLVM
 
@@ -11,7 +13,7 @@ namespace LLVM
 -- def double : Type 0 := sorry
 
 def Strmap (a:Type) := RBMap String a (fun x y => decide (x < y))
-def Strmap.empty {a:Type} : Strmap a := RBMap.empty
+def Strmap.empty {a:Type} : Strmap a := Std.RBMap.empty
 
 -- Identifiers -----------------------------------------------------------------
 

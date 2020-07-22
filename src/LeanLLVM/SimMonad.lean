@@ -1,6 +1,6 @@
 import Init.Data.Array
 import Init.Data.Int
-import Init.Data.RBMap
+import Std.Data.RBMap
 import Init.Data.String
 
 import Galois.Data.Bitvec
@@ -9,6 +9,8 @@ import LeanLLVM.AST
 import LeanLLVM.PP
 import LeanLLVM.TypeContext
 import LeanLLVM.Value
+
+open Std (RBMap)
 
 namespace LLVM
 
@@ -34,7 +36,7 @@ structure frame :=
 (framePtr : Nat)
 
 instance frameInh : Inhabited frame :=
-⟨{ locals := RBMap.empty,
+⟨{ locals := Std.RBMap.empty,
    func   :=
      { linkage  := none,
        retType  := PrimType.void,
@@ -107,14 +109,14 @@ def setState (st:State) : Sim Unit :=
   Sim.mk (λz _ k frm _ => k () frm st).
 
 def assignReg (reg:Ident) (v:Value) : Sim Unit :=
-  modifyFrame (λfrm => { frm with locals := RBMap.insert frm.locals reg v }).
+  modifyFrame (λfrm => { frm with locals := Std.RBMap.insert frm.locals reg v }).
 
 def trace (ev:trace_event) : Sim Unit :=
   Sim.mk (λz conts k frm st => conts.ktrace ev (k () frm st))
 
 def lookupReg (reg:Ident) : Sim Value := do
   frm <- getFrame;
-  match RBMap.find? frm.locals reg with
+  match Std.RBMap.find? frm.locals reg with
   | none     => throw (IO.userError ("unassigned register: " ++ reg.asString))
   | some v => pure v
 
@@ -189,13 +191,13 @@ def linkSymbol (st:State) (x:Symbol × bitvec 64) : State :=
 
 def initializeState (mod : Module) (dl:DataLayout) (ls:List (Symbol × bitvec 64)) : State :=
   ls.foldl linkSymbol
-    { mem := RBMap.empty
+    { mem := Std.RBMap.empty
     , mod := mod
     , dl  := dl
     , heapAllocPtr := 0
     , stackPtr := 2^64
-    , symmap := RBMap.empty
-    , revsymmap := RBMap.empty
+    , symmap := Std.RBMap.empty
+    , revsymmap := Std.RBMap.empty
     }
 
 end LLVM

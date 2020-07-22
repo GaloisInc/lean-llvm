@@ -1,6 +1,6 @@
 import Init.Data.Array
 import Init.Data.Int
-import Init.Data.RBMap
+import Std.Data.RBMap
 import Init.System.IO
 
 import LeanLLVM.AST
@@ -8,6 +8,8 @@ import LeanLLVM.PP
 import LeanLLVM.DataLayout
 import LeanLLVM.LLVMCodes
 import LeanLLVM.LLVMFFI
+
+open Std (RBMap)
 
 namespace LLVM
 namespace Output
@@ -31,10 +33,10 @@ structure ValueContext :=
 (typeMap   : TypeMap)
 
 def ValueContext.init : ValueContext := 
-  { symbolMap := RBMap.empty,
-    blockMap  := RBMap.empty,
-    valueMap  := RBMap.empty,
-    typeMap   := RBMap.empty
+  { symbolMap := Std.RBMap.empty,
+    blockMap  := Std.RBMap.empty,
+    valueMap  := Std.RBMap.empty,
+    typeMap   := Std.RBMap.empty
   }
 
 end Output

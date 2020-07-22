@@ -1,8 +1,10 @@
-import Init.Data.RBMap
+import Std.Data.RBMap
 
 import LeanLLVM.Alignment
 import LeanLLVM.AST
 import LeanLLVM.Parser
+
+open Std (RBMap)
 
 namespace LLVM
 namespace parse
@@ -87,20 +89,20 @@ def default_data_layout : DataLayout :=
   , aggregateAlignment := unaligned
   , ptrSize := 8 -- 8 bytes, 64 bits
   , ptrAlign := align8
-  , integerInfo := RBMap.fromList
+  , integerInfo := Std.RBMap.fromList
        [ ( 1, unaligned)
        , ( 8, unaligned)
        , (16, align2)
        , (32, align4)
        , (64, align8)
        ] _
-  , floatInfo := RBMap.fromList
+  , floatInfo := Std.RBMap.fromList
        [ ( 16, align2)
        , ( 32, align4)
        , ( 64, align8)
        , (128, align16)
        ] _
-  , vectorInfo := RBMap.fromList
+  , vectorInfo := Std.RBMap.fromList
        [ ( 64, align8)
        , (128, align16)
        ] _

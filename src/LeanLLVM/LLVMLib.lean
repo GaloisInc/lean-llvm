@@ -1,6 +1,6 @@
 import Init.Data.Array
 import Init.Data.Int
-import Init.Data.RBMap
+import Std.Data.RBMap
 import Init.System.IO
 
 import LeanLLVM.AST
@@ -8,6 +8,8 @@ import LeanLLVM.PP
 import LeanLLVM.Parser
 import LeanLLVM.DataLayout
 import LeanLLVM.LLVMFFI
+
+open Std (RBMap)
 
 namespace Option
 
@@ -61,7 +63,7 @@ instance monadExcept : MonadExcept IO.Error extract :=
 instance mIO : MonadIO extract := { monadLift := λa m r => m }
 
 def run {a:Type} (m:extract a) : IO (aliasMap × a) := do
-  r <- IO.mkRef (RBMap.empty, RBMap.empty);
+  r <- IO.mkRef (Std.RBMap.empty, Std.RBMap.empty);
   a <- m r;
   (mp,_) <- r.get;
   pure (mp, a)
@@ -78,7 +80,7 @@ def visit (nm:String) : extract Bool := λref => do
   match vm.find? nm with
   | some () => pure true
   | none => do
-    let vm' := RBMap.insert vm nm ();
+    let vm' := Std.RBMap.insert vm nm ();
     ref.set (am, vm');
     pure false
 
@@ -86,7 +88,7 @@ def visit (nm:String) : extract Bool := λref => do
 -- called to register the body of the named alias.
 def define (nm:String) (body:TypeDeclBody) : extract Unit := λref => do
   (am,vm) <- ref.get;
-  let am' := RBMap.insert am nm body;
+  let am' := Std.RBMap.insert am nm body;
   ref.set (am',vm);
   pure ()
 
@@ -176,7 +178,7 @@ def InstrMap := RBMap FFI.Instruction Ident FFI.instructionLt
 
 def BBMap := RBMap FFI.BasicBlock BlockLabel FFI.basicBlockLt
 
-def BBMap.empty : BBMap := RBMap.empty
+def BBMap.empty : BBMap := Std.RBMap.empty
 
 structure ValueContext :=
 (funArgs : Array (Typed Ident))
@@ -185,8 +187,8 @@ structure ValueContext :=
 
 def ValueContext.empty : ValueContext :=
   { funArgs := Array.empty,
-    imap := RBMap.empty,
-    bmap :=  RBMap.empty,
+    imap := Std.RBMap.empty,
+    bmap :=  Std.RBMap.empty,
   }
 
 def extractArgs (fn : FFI.Function) : extract (Nat × Array (Typed Ident)) := do
@@ -223,16 +225,16 @@ def computeInstructionNumbering (rawbb:FFI.BasicBlock) (c0:Nat) (imap0:InstrMap)
       else do
         mnm <- monadLift (FFI.getInstructionName rawi);
         match mnm with
-        | some nm => pure (c,   RBMap.insert imap rawi (Ident.named nm))
-        | none    => pure (c+1, RBMap.insert imap rawi (Ident.anon c))
+        | some nm => pure (c,   Std.RBMap.insert imap rawi (Ident.named nm))
+        | none    => pure (c+1, Std.RBMap.insert imap rawi (Ident.anon c))
 
 def computeNumberings (c0:Nat) (fn:FFI.Function) : extract (BBMap × InstrMap) := do
    bbarr <- monadLift (FFI.getBasicBlockArray fn);
    (_,finalbmap, finalimap) <-
-     Array.iterateM bbarr (c0, BBMap.empty, (RBMap.empty : InstrMap)) $ (λ_ rawbb st => do
+     Array.iterateM bbarr (c0, BBMap.empty, (Std.RBMap.empty : InstrMap)) $ (λ_ rawbb st => do
        let (c, bmap, imap) := st;
        (c', blab) <- extractBBLabel rawbb c;
-       bmap' <- pure (RBMap.insert bmap rawbb blab);
+       bmap' <- pure (Std.RBMap.insert bmap rawbb blab);
        (c'', imap') <- computeInstructionNumbering rawbb c' imap;
        pure (c'',bmap',imap'));
    pure (finalbmap, finalimap)
@@ -293,7 +295,7 @@ def extractValue (ctx:ValueContext) (rawv:FFI.Value) : extract Value := do
     | none => throwError "invalid argument value"
     | some i => pure (Value.ident i.value)
   | FFI.ValueView.instruction i =>
-    match RBMap.find? ctx.imap i with
+    match Std.RBMap.find? ctx.imap i with
     | none   => throwError "invalid instruction value"
     | some i => pure (Value.ident i)
   | FFI.ValueView.block b =>
@@ -301,7 +303,7 @@ def extractValue (ctx:ValueContext) (rawv:FFI.Value) : extract Value := do
   | FFI.ValueView.unknown => throwError "unknown value"
 
 def extractBlockLabel (ctx:ValueContext) (bb:FFI.BasicBlock) : extract BlockLabel :=
-  match RBMap.find? ctx.bmap bb with
+  match Std.RBMap.find? ctx.bmap bb with
   | none => throwError "unknown basic block"
   | some lab => pure lab
 
@@ -544,7 +546,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
 
 def extractStmt (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract Stmt := do
   i <- extractInstruction rawinstr ctx;
-  pure { assign := RBMap.find? ctx.imap rawinstr,
+  pure { assign := Std.RBMap.find? ctx.imap rawinstr,
          instr := i,
          metadata := Array.empty,
        }
@@ -558,7 +560,7 @@ def extractStatements (bb:FFI.BasicBlock) (ctx:ValueContext) : extract (Array St
 def extractBasicBlocks (fn : FFI.Function) (ctx:ValueContext) : extract (Array BasicBlock) := do
   rawbbs <- monadLift (FFI.getBasicBlockArray fn);
   Array.iterateM rawbbs Array.empty (λ_ rawbb bs =>
-    match RBMap.find? ctx.bmap rawbb with
+    match Std.RBMap.find? ctx.bmap rawbb with
     | none => throwError "unknown basic block"
     | some lab => do
       stmts <- extractStatements rawbb ctx;
@@ -569,7 +571,7 @@ def extractFunction (fn : FFI.Function) : extract Define := do
   ret <- monadLift (FFI.getReturnType fn) >>= extractType;
   (counter, args) <- extractArgs fn;
   (bmap, imap) <- computeNumberings counter fn;
-  let ctx := { ValueContext . funArgs := args, imap := imap, bmap := bmap };
+  let ctx : ValueContext := { funArgs := args, imap := imap, bmap := bmap } ;
   bbs <- extractBasicBlocks fn ctx;
   pure { linkage := none,
          retType := ret,
@@ -600,7 +602,7 @@ def extractGlobal (g:FFI.GlobalVar) : extract Global := do
     | none => throwError "Expected global variable"
     | some (nm, val, align) => do
       val' <- val.mapM (extractValue ValueContext.empty);
-      let attrs := { GlobalAttrs . linkage := none, visibility := none, const := false };
+      let attrs : GlobalAttrs := {  linkage := none, visibility := none, const := false };
       pure { sym := ⟨nm⟩
            , attrs := attrs
            , type := valtp

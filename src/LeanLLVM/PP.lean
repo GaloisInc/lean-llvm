@@ -1,8 +1,10 @@
 import Init.Data.List
-import Init.Data.RBMap
+import Std.Data.RBMap
 import Init.Data.String
 
 import LeanLLVM.AST
+
+open Std (RBMap)
 
 namespace LLVM
 

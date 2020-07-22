@@ -1,6 +1,6 @@
 import Init.Data.Array
 import Init.Data.Int
-import Init.Data.RBMap
+import Std.Data.RBMap
 
 import Galois.Data.Bitvec
 
@@ -9,6 +9,8 @@ import LeanLLVM.PP
 import LeanLLVM.TypeContext
 import LeanLLVM.SimMonad
 import LeanLLVM.Value
+
+open Std (RBMap)
 
 namespace LLVM
 open Sim
@@ -91,7 +93,7 @@ partial def store (dl:DataLayout) : mem_type → bitvec 64 → Sim.Value → Sim
   let (sz,a) := mem_type.szAndAlign dl mt;
   let sz' := bitvec.of_nat 64 (padToAlignment sz a);
   if vs.size = n then
-    () <$ Array.iterateM vs p (λ_idx v p' => do
+    Functor.discard $ Array.iterateM vs p (λ_idx v p' => do
             store mt p' v;
             pure (p'.add sz'))
   else
@@ -102,7 +104,7 @@ partial def store (dl:DataLayout) : mem_type → bitvec 64 → Sim.Value → Sim
   let (sz,a) := mem_type.szAndAlign dl mt;
   let sz' := bitvec.of_nat 64 (padToAlignment sz a);
   if vs.size = n then
-    () <$ Array.iterateM vs p (λ_idx v p' => do
+    Functor.discard $ Array.iterateM vs p (λ_idx v p' => do
       store mt p' v;
       pure (p'.add sz'))
    else

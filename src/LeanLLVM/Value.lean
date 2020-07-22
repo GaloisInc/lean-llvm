@@ -1,4 +1,4 @@
-import Init.Data.RBMap
+import Std.Data.RBMap
 
 import Galois.Data.Bitvec
 
@@ -6,6 +6,7 @@ import LeanLLVM.AST
 import LeanLLVM.PP
 import LeanLLVM.TypeContext
 
+open Std (RBMap)
 
 namespace LLVM
 namespace Sim
