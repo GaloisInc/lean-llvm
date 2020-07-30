@@ -1,4 +1,4 @@
-#include <runtime/object.h>
+#include <lean/object.h>
 #include <llvm/IR/Module.h>
 
 using namespace lean;

@@ -16,10 +16,10 @@ from Lean.
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/SourceMgr.h>
 
-#include <runtime/apply.h>
-#include <runtime/io.h>
-#include <runtime/mpz.h>
-#include <runtime/utf8.h>
+#include <lean/apply.h>
+#include <lean/io.h>
+#include <lean/mpz.h>
+#include <lean/utf8.h>
 
 
 ////////////////////////////////////////////////////////////////////////

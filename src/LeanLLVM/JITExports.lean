@@ -1,7 +1,7 @@
 
 #include "llvm_exports.h"
 
-#include <runtime/io.h>
+#include <lean/io.h>
 
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
 #include <llvm/ExecutionEngine/Orc/ExecutionUtils.h>
