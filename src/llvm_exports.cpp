@@ -327,7 +327,7 @@ extern "C" {
 obj_res lean_llvm_newContext(obj_arg /*r*/) {
     auto ctx = new llvm::LLVMContext();
     object* ctxObj = alloc_external(getLLVMContextClass(), ctx);
-    return set_io_result(ctxObj);
+    return io_result_mk_ok(ctxObj);
 }
 
 
@@ -337,20 +337,20 @@ obj_res lean_llvm_newMemoryBufferFromFile(b_obj_arg fname, obj_arg r) {
     auto MBOrErr = llvm::MemoryBuffer::getFile(path);
     if (std::error_code EC = MBOrErr.getError()) {
       std::string errMsg = "newMemoryBufferFromFile failed (" + EC.message() + ")";
-      return set_io_error( errMsg.c_str() );
+      return io_result_mk_error( errMsg.c_str() );
     }
 
  auto b = std::move(MBOrErr.get());
     object* bufferObj = alloc_external(getMemoryBufferClass(), b.get());
     b.release();
-    return set_io_result(bufferObj);
+    return io_result_mk_ok(bufferObj);
 }
 
 obj_res lean_llvm_getTypeTag(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     llvm::Type::TypeID id = tp->getTypeID();
     obj_res n = box(id);
-    return set_io_result(n);
+    return io_result_mk_ok(n);
 }
 
 obj_res lean_llvm_newPrimitiveType( b_obj_arg ctx_obj, b_obj_arg code, obj_arg r ) {
@@ -358,35 +358,35 @@ obj_res lean_llvm_newPrimitiveType( b_obj_arg ctx_obj, b_obj_arg code, obj_arg r
   llvm::Type::TypeID id = static_cast<llvm::Type::TypeID>(unbox(code));
   if (auto tp = llvm::Type::getPrimitiveType(*ctx, id) ) {
     obj_res tp_obj = allocTypeObj(tp);
-    return set_io_result( tp_obj );
+    return io_result_mk_ok( tp_obj );
   }
 
-  return set_io_error( mk_string("newPrimitiveType expected primitive type code") );
+  return io_result_mk_error( mk_string("newPrimitiveType expected primitive type code") );
 }
 
 obj_res lean_llvm_newIntegerType( b_obj_arg ctx_obj, b_obj_arg w, obj_arg r ) {
   llvm::LLVMContext *ctx = toLLVMContext(ctx_obj);
   auto tp = llvm::IntegerType::get(*ctx, unbox(w));
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_newArrayType( b_obj_arg n, b_obj_arg tp_obj, obj_arg r ) {
   auto eltp = toType(tp_obj);
   auto tp = llvm::ArrayType::get( eltp, unbox(n) );
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_newVectorType( b_obj_arg n, b_obj_arg tp_obj, obj_arg r ) {
   auto eltp = toType(tp_obj);
   auto tp = llvm::VectorType::get( eltp, unbox(n) );
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_newPointerType( b_obj_arg tp_obj, obj_arg r ) {
   auto eltp = toType(tp_obj);
   auto addrSpace = 0;
   auto tp = llvm::PointerType::get( eltp, addrSpace );
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_newFunctionType( b_obj_arg ret_obj, b_obj_arg args_obj, b_obj_arg varargs, obj_arg r ) {
@@ -400,7 +400,7 @@ obj_res lean_llvm_newFunctionType( b_obj_arg ret_obj, b_obj_arg args_obj, b_obj_
   llvm::ArrayRef<llvm::Type*> args( tps, n );
   auto tp = llvm::FunctionType::get( ret, args, unbox(varargs) );
 
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 
@@ -412,7 +412,7 @@ obj_res lean_llvm_newLiteralStructType( b_obj_arg packed, b_obj_arg tps_obj, obj
   }
   llvm::ArrayRef<llvm::Type*> tps_arr( tps, n );
   auto tp = llvm::StructType::create( tps_arr, llvm::StringRef(), unbox(packed) );
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_newOpaqueStructType( b_obj_arg ctx_obj, b_obj_arg nm_obj, obj_arg r ) {
@@ -420,7 +420,7 @@ obj_res lean_llvm_newOpaqueStructType( b_obj_arg ctx_obj, b_obj_arg nm_obj, obj_
   auto nm  = asStringRef(nm_obj);
 
   auto tp = llvm::StructType::create( *ctx, nm );
-  return set_io_result( allocTypeObj(tp) );
+  return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_setStructTypeBody( b_obj_arg tp_obj, b_obj_arg packed, b_obj_arg tps_obj, obj_arg r ) {
@@ -434,10 +434,10 @@ obj_res lean_llvm_setStructTypeBody( b_obj_arg tp_obj, b_obj_arg packed, b_obj_a
     llvm::ArrayRef<llvm::Type*> tps_arr( tps, n );
 
     tp->setBody( tps_arr, unbox(packed) );
-    return set_io_result( box(0) );
+    return io_result_mk_ok( box(0) );
   }
 
-  return set_io_result( mk_string("expected struct type in setStructTypeBody"));
+  return io_result_mk_ok( mk_string("expected struct type in setStructTypeBody"));
 }
 
 obj_res lean_llvm_getTypeName( b_obj_arg tp_obj, obj_arg r ) {
@@ -445,26 +445,26 @@ obj_res lean_llvm_getTypeName( b_obj_arg tp_obj, obj_arg r ) {
   auto structtp = llvm::dyn_cast<llvm::StructType>( tp );
 
   if( !structtp ) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   auto nm = structtp->getName();
   if( nm.empty() ) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   obj_res str = mk_string( nm );
-  return set_io_result( mk_option_some( str ) );
+  return io_result_mk_ok( mk_option_some( str ) );
 }
 
 obj_res lean_llvm_typeIsOpaque( b_obj_arg tp_obj, obj_arg r) {
   auto tp = toType(tp_obj);
   if( auto stp = llvm::dyn_cast<llvm::StructType>(tp) ) {
     unsigned int opaque = stp->isOpaque();
-    return set_io_result( box(opaque) );
+    return io_result_mk_ok( box(opaque) );
   }
 
-  return set_io_result( box(0) );
+  return io_result_mk_ok( box(0) );
 }
 
 
@@ -472,33 +472,33 @@ obj_res lean_llvm_getIntegerTypeWidth(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     unsigned int w = tp->getIntegerBitWidth();
     obj_res w_obj = box(w); // TODO, overflow?
-    return set_io_result(w_obj);
+    return io_result_mk_ok(w_obj);
 }
 
 obj_res lean_llvm_getPointerElementType(b_obj_arg tp_obj, obj_arg r) {
     auto tp = toType(tp_obj);
     llvm::PointerType *pt = llvm::dyn_cast<llvm::PointerType>(tp);
     if (!pt) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     llvm::Type* elt_tp = pt->getElementType();
     obj_res elt_tp_obj = allocTypeObj( elt_tp );
-    return set_io_result(mk_option_some(elt_tp_obj));
+    return io_result_mk_ok(mk_option_some(elt_tp_obj));
 }
 
 obj_res lean_llvm_getSequentialTypeData( b_obj_arg tp_obj, obj_arg r) {
   auto tp = toType(tp_obj);
   auto seq = llvm::dyn_cast<llvm::SequentialType>(tp);
   if(!seq) {
-    return set_io_result(mk_option_none());
+    return io_result_mk_ok(mk_option_none());
   }
 
   auto num = seq->getNumElements();
   auto elt_tp = seq->getElementType();
   obj_res x = mk_pair( mk_nat_obj(num), allocTypeObj( elt_tp ) );
 
-  return set_io_result(mk_option_some( x ));
+  return io_result_mk_ok(mk_option_some( x ));
 }
 
 obj_res lean_llvm_getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
@@ -506,7 +506,7 @@ obj_res lean_llvm_getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
   auto st = llvm::dyn_cast<llvm::StructType>(tp);
 
   if(!st) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   unsigned int packed = st->isPacked();
@@ -520,7 +520,7 @@ obj_res lean_llvm_getStructTypeData( b_obj_arg tp_obj, obj_arg r) {
   }
 
   obj_res x = mk_pair( box(packed), arr );
-  return set_io_result( mk_option_some(x) );
+  return io_result_mk_ok( mk_option_some(x) );
 }
 
 obj_res lean_llvm_getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
@@ -528,7 +528,7 @@ obj_res lean_llvm_getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
   auto fn = llvm::dyn_cast<llvm::FunctionType>(tp);
 
   if(!fn) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   unsigned int varargs = fn->isVarArg();
@@ -542,7 +542,7 @@ obj_res lean_llvm_getFunctionTypeData( b_obj_arg tp_obj, obj_arg r ) {
   }
 
   obj_res x = mk_pair( allocTypeObj(ret), mk_pair( arr, box(varargs) ));
-  return set_io_result( mk_option_some( x ));
+  return io_result_mk_ok( mk_option_some( x ));
 }
 }
 
@@ -551,7 +551,7 @@ extern "C" {
 
 obj_res lean_llvm_getValueType(b_obj_arg v_obj, obj_arg r) {
     auto tp = toValue(v_obj)->getType();
-    return set_io_result( allocTypeObj(tp) );
+    return io_result_mk_ok( allocTypeObj(tp) );
 }
 
 obj_res lean_llvm_decomposeValue(b_obj_arg v_obj, obj_arg r) {
@@ -594,22 +594,22 @@ obj_res lean_llvm_decomposeValue(b_obj_arg v_obj, obj_arg r) {
       x= alloc_cnstr(0,0,0);
     }
 
-    return set_io_result(x);
+    return io_result_mk_ok(x);
 }
 
 obj_res lean_llvm_getConstantTag( b_obj_arg c_obj, obj_arg r ) {
   auto v = toValue(c_obj);
   if( auto c = llvm::dyn_cast<llvm::Constant>(v) ) {
     unsigned int id = v->getValueID();
-    return set_io_result( box(id) );
+    return io_result_mk_ok( box(id) );
   } else {
-    return set_io_error( "expected llvm::Constant value in 'getConstantTag'" );
+    return io_result_mk_error( "expected llvm::Constant value in 'getConstantTag'" );
   }
 }
 
 obj_res lean_llvm_getConstantName(b_obj_arg c_obj, obj_arg r) {
     auto v = toValue(c_obj);
-    return set_io_result(getOptionalNameObj(v->getValueName()));
+    return io_result_mk_ok(getOptionalNameObj(v->getValueName()));
 }
 
 uint8_t lean_llvm_instructionLt(b_obj_arg x, b_obj_arg y) {
@@ -618,18 +618,18 @@ uint8_t lean_llvm_instructionLt(b_obj_arg x, b_obj_arg y) {
 
 obj_res lean_llvm_getInstructionName(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
-    return set_io_result(getOptionalNameObj(i->getValueName()));
+    return io_result_mk_ok(getOptionalNameObj(i->getValueName()));
 }
 
 obj_res lean_llvm_getInstructionType(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
-    return set_io_result(allocTypeObj(i->getType()));
+    return io_result_mk_ok(allocTypeObj(i->getType()));
 }
 
 obj_res lean_llvm_getInstructionOpcode(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     unsigned int opcode = i->getOpcode();
-    return set_io_result( box( opcode ) );
+    return io_result_mk_ok( box( opcode ) );
 }
 
 obj_res lean_llvm_getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
@@ -637,16 +637,16 @@ obj_res lean_llvm_getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto ri = llvm::dyn_cast<llvm::ReturnInst>(i);
     if (!ri) {
-	return set_io_result( mk_option_none());
+	return io_result_mk_ok( mk_option_none());
     }
 
     llvm::Value* v = ri->getReturnValue();
     if (!v) {
-	return set_io_result( mk_option_none());
+	return io_result_mk_ok( mk_option_none());
     }
 
     obj_res v_obj = allocValueObj(parent,v);
-    return set_io_result( mk_option_some(v_obj));
+    return io_result_mk_ok( mk_option_some(v_obj));
 }
 
 obj_res lean_llvm_getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
@@ -654,13 +654,13 @@ obj_res lean_llvm_getBinaryOperatorValues(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto bop = llvm::dyn_cast<llvm::BinaryOperator>(i);
     if (!bop || bop->getNumOperands() != 2) {
-	return set_io_result( mk_option_none());
+	return io_result_mk_ok( mk_option_none());
 
     }
     obj_res v1_obj = allocValueObj(parent, bop->getOperand(0));
     obj_res v2_obj = allocValueObj(parent, bop->getOperand(1));
     obj_res pair = mk_pair(v1_obj, v2_obj);
-    return set_io_result( mk_option_some(pair));
+    return io_result_mk_ok( mk_option_some(pair));
 }
 
 obj_res lean_llvm_getICmpInstData(b_obj_arg i_obj, obj_arg r) {
@@ -669,12 +669,12 @@ obj_res lean_llvm_getICmpInstData(b_obj_arg i_obj, obj_arg r) {
     auto ci = llvm::dyn_cast<llvm::CmpInst>(i);
 
     if (!ci || (ci->getNumOperands() != 2)) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     llvm::CmpInst::Predicate pred = ci->getPredicate();
     if(! (llvm::CmpInst::FIRST_ICMP_PREDICATE <= pred && pred <= llvm::CmpInst::LAST_ICMP_PREDICATE) ) {
-      return set_io_result( mk_option_none() );
+      return io_result_mk_ok( mk_option_none() );
     }
 
     unsigned int icmpOp =
@@ -686,7 +686,7 @@ obj_res lean_llvm_getICmpInstData(b_obj_arg i_obj, obj_arg r) {
 
     obj_res tuple = mk_pair(box(icmpOp), mk_pair(v1_obj, v2_obj));
 
-    return set_io_result(mk_option_some(tuple));
+    return io_result_mk_ok(mk_option_some(tuple));
 }
 
 obj_res lean_llvm_getBranchInstData(b_obj_arg i_obj, obj_arg r) {
@@ -694,7 +694,7 @@ obj_res lean_llvm_getBranchInstData(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto bi = llvm::dyn_cast<llvm::BranchInst>(i);
     if (!bi) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     if (bi->getNumSuccessors() == 1) {
@@ -703,7 +703,7 @@ obj_res lean_llvm_getBranchInstData(b_obj_arg i_obj, obj_arg r) {
 	obj_res x = alloc_cnstr(0, 1, 0);
 	cnstr_set(x, 0, b_obj);
 
-	return set_io_result( mk_option_some(x));
+	return io_result_mk_ok( mk_option_some(x));
 
     } else if (bi->getNumSuccessors() == 2) {
 	obj_res x = alloc_cnstr(1, 3, 0);
@@ -716,9 +716,9 @@ obj_res lean_llvm_getBranchInstData(b_obj_arg i_obj, obj_arg r) {
 	cnstr_set(x, 1, t_obj);
 	cnstr_set(x, 2, f_obj);
 
-	return set_io_result(mk_option_some(x));
+	return io_result_mk_ok(mk_option_some(x));
     } else {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 }
 
@@ -727,7 +727,7 @@ obj_res lean_llvm_getGEPData( b_obj_arg i_obj, obj_arg r ) {
   auto parent = valueParent(i_obj);
   auto gep = llvm::dyn_cast<llvm::GetElementPtrInst>(i);
   if( !gep ) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   obj_res inbounds;
@@ -745,7 +745,7 @@ obj_res lean_llvm_getGEPData( b_obj_arg i_obj, obj_arg r ) {
   }
 
   obj_res tuple = mk_pair( inbounds, mk_pair( base_obj, arr ) );
-  return set_io_result( mk_option_some( tuple ) );
+  return io_result_mk_ok( mk_option_some( tuple ) );
 }
 
 obj_res lean_llvm_getAllocaData(b_obj_arg i_obj, obj_arg r) {
@@ -753,7 +753,7 @@ obj_res lean_llvm_getAllocaData(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto ai = llvm::dyn_cast<llvm::AllocaInst>(i);
     if (!ai) {
-        return set_io_result(mk_option_none());
+        return io_result_mk_ok(mk_option_none());
     }
 
     obj_res tp_obj = allocTypeObj(ai->getAllocatedType());
@@ -767,7 +767,7 @@ obj_res lean_llvm_getAllocaData(b_obj_arg i_obj, obj_arg r) {
 
     obj_res tuple = mk_pair(tp_obj, mk_pair(nelems, align));
 
-    return set_io_result(mk_option_some(tuple));
+    return io_result_mk_ok(mk_option_some(tuple));
 }
 
 obj_res lean_llvm_getStoreData (b_obj_arg i_obj, obj_arg r) {
@@ -777,7 +777,7 @@ obj_res lean_llvm_getStoreData (b_obj_arg i_obj, obj_arg r) {
 
     auto si = llvm::dyn_cast<llvm::StoreInst>(i);
     if (!si) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     obj_res val_obj = allocValueObj(parent, si->getValueOperand());
@@ -786,7 +786,7 @@ obj_res lean_llvm_getStoreData (b_obj_arg i_obj, obj_arg r) {
 
     obj_res tuple = mk_pair(val_obj, mk_pair(ptr_obj, align));
 
-    return set_io_result(mk_option_some(tuple));
+    return io_result_mk_ok(mk_option_some(tuple));
 }
 
 obj_res lean_llvm_getLoadData(b_obj_arg i_obj, obj_arg r) {
@@ -794,7 +794,7 @@ obj_res lean_llvm_getLoadData(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto li = llvm::dyn_cast<llvm::LoadInst>(i);
     if (!li) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     llvm::Value* ptr = li->getPointerOperand();
@@ -803,7 +803,7 @@ obj_res lean_llvm_getLoadData(b_obj_arg i_obj, obj_arg r) {
     obj_res align = mk_option_some(box(li->getAlignment()));
 
     obj_res pair  = mk_pair(ptr_obj, align);
-    return set_io_result(mk_option_some(pair));
+    return io_result_mk_ok(mk_option_some(pair));
 }
 
 obj_res lean_llvm_getCastInstData(b_obj_arg i_obj, obj_arg r) {
@@ -811,13 +811,13 @@ obj_res lean_llvm_getCastInstData(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto ci = llvm::dyn_cast<llvm::CastInst>(i);
     if (!ci) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     unsigned int opcode = static_cast<unsigned int>(ci->getOpcode());
 
     obj_res pair = mk_pair(box(opcode), allocValueObj(parent, ci->getOperand(0)));
-    return set_io_result(mk_option_some(pair));
+    return io_result_mk_ok(mk_option_some(pair));
 }
 
 
@@ -826,7 +826,7 @@ obj_res lean_llvm_getCallInstData( b_obj_arg i_obj, obj_arg r ) {
   auto parent = valueParent(i_obj);
   auto ci = llvm::dyn_cast<llvm::CallInst>(i);
   if(!ci) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   bool tailcall = ci->isTailCall();
@@ -847,7 +847,7 @@ obj_res lean_llvm_getCallInstData( b_obj_arg i_obj, obj_arg r ) {
     mk_pair( allocValueObj(parent, val),
              arr )));
 
-  return set_io_result(mk_option_some( tuple ));
+  return io_result_mk_ok(mk_option_some( tuple ));
 }
 
 obj_res lean_llvm_getSelectInstData(b_obj_arg i_obj, obj_arg r) {
@@ -855,33 +855,33 @@ obj_res lean_llvm_getSelectInstData(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto si = llvm::dyn_cast<llvm::SelectInst>(i);
     if (!si) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     obj_res tuple =
       mk_pair(allocValueObj(parent, si->getCondition()),
 	      mk_pair(allocValueObj(parent, si->getTrueValue()),
 		      allocValueObj(parent, si->getFalseValue())));
-    return set_io_result(mk_option_some(tuple));
+    return io_result_mk_ok(mk_option_some(tuple));
 
 }
 
 obj_res lean_llvm_hasNoUnsignedWrap(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->hasNoUnsignedWrap();
-    return set_io_result(box(b));
+    return io_result_mk_ok(box(b));
 }
 
 obj_res lean_llvm_hasNoSignedWrap(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->hasNoSignedWrap();
-    return set_io_result(box(b));
+    return io_result_mk_ok(box(b));
 }
 
 obj_res lean_llvm_isExact(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->isExact();
-    return set_io_result(box(b));
+    return io_result_mk_ok(box(b));
 }
 
 uint8_t lean_llvm_basicBlockLt(b_obj_arg x, b_obj_arg y) {
@@ -893,7 +893,7 @@ obj_res lean_llvm_getPhiData(b_obj_arg i_obj, obj_arg r) {
     auto parent = valueParent(i_obj);
     auto phi = llvm::dyn_cast<llvm::PHINode>(i);
     if (!phi) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     size_t n = phi->getNumIncomingValues();
@@ -907,12 +907,12 @@ obj_res lean_llvm_getPhiData(b_obj_arg i_obj, obj_arg r) {
 	*(p++) = mk_pair(allocValueObj(parent, v), allocBasicBlockObj(parent, bb));
     }
 
-    return set_io_result( mk_option_some(arr));
+    return io_result_mk_ok( mk_option_some(arr));
 }
 
 obj_res lean_llvm_getBBName (b_obj_arg f, obj_arg r) {
     auto bb = toBasicBlock(f);
-    return set_io_result(getOptionalNameObj(bb->getValueName()));
+    return io_result_mk_ok(getOptionalNameObj(bb->getValueName()));
 }
 
 obj_res lean_llvm_getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
@@ -925,7 +925,7 @@ obj_res lean_llvm_getInstructionArray(b_obj_arg bb_obj, obj_arg r) {
       arr = array_push(arr, instr_obj);
     }
 
-    return set_io_result(arr);
+    return io_result_mk_ok(arr);
 }
 
 obj_res lean_llvm_newFunction( obj_arg m_obj, b_obj_arg tp_obj, b_obj_arg nm_obj, obj_arg r ) {
@@ -940,16 +940,16 @@ obj_res lean_llvm_newFunction( obj_arg m_obj, b_obj_arg tp_obj, b_obj_arg nm_obj
     llvm::Function* f = llvm::Function::Create( fnty, linkage, tw, mod );
 
     obj_arg f_obj = allocFunctionObj( m_obj, f );
-    return set_io_result( f_obj );
+    return io_result_mk_ok( f_obj );
   }
 
-  return set_io_error( mk_string("Expected function type in newFunction") );
+  return io_result_mk_error( mk_string("Expected function type in newFunction") );
 }
 
 obj_res lean_llvm_getFunctionName(b_obj_arg f, obj_arg r) {
     auto fun = toFunction(f);
     std::string str = fun->getValueName()->getKey().str();
-    return set_io_result( mk_string(str));
+    return io_result_mk_ok( mk_string(str));
 }
 
 obj_res lean_llvm_getFunctionArgs(b_obj_arg f, obj_arg r) {
@@ -963,11 +963,11 @@ obj_res lean_llvm_getFunctionArgs(b_obj_arg f, obj_arg r) {
 			 allocTypeObj(arg.getType()));
     }
 
-    return set_io_result(arr);
+    return io_result_mk_ok(arr);
 }
 
 obj_res lean_llvm_getReturnType(b_obj_arg f, obj_arg r) {
-  return set_io_result(allocTypeObj(toFunction(f)->getReturnType()));
+  return io_result_mk_ok(allocTypeObj(toFunction(f)->getReturnType()));
 }
 
 obj_res lean_llvm_getBasicBlockArray(b_obj_arg f, obj_arg r) {
@@ -980,14 +980,14 @@ obj_res lean_llvm_getBasicBlockArray(b_obj_arg f, obj_arg r) {
     for(llvm::BasicBlock& bb : bblist) {
       *(p++) = allocBasicBlockObj(parent, &bb);
     }
-    return set_io_result(arr);
+    return io_result_mk_ok(arr);
 }
 
 obj_res lean_llvm_getGlobalVarData( b_obj_arg gv_obj, obj_arg r ) {
   auto gv = toGlobalVar(gv_obj);
   auto parent = valueParent(gv_obj);
   if( !gv ) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
   
   auto nm = mk_string(gv->getValueName()->getKey());
@@ -1001,7 +1001,7 @@ obj_res lean_llvm_getGlobalVarData( b_obj_arg gv_obj, obj_arg r ) {
 
   unsigned align = gv->getAlignment();
 
-  return set_io_result( mk_option_some( mk_pair( nm, mk_pair( val, box(align) ) )));
+  return io_result_mk_ok( mk_option_some( mk_pair( nm, mk_pair( val, box(align) ) )));
 }
 }
 
@@ -1019,10 +1019,10 @@ obj_res lean_llvm_parseBitcodeFile(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     handleAllErrors(std::move(moduleOrErr.takeError()), [&](llvm::ErrorInfoBase &eib) {
         errMsg = "parseBitcodeFile failed (" + eib.message() + ")";
     });
-	return set_io_error( errMsg.c_str() );
+	return io_result_mk_error( errMsg.c_str() );
     }
 
-    return set_io_result(allocModuleObj(ctxObj, std::move(*moduleOrErr)));
+    return io_result_mk_ok(allocModuleObj(ctxObj, std::move(*moduleOrErr)));
 }
 
 obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
@@ -1044,10 +1044,10 @@ obj_res lean_llvm_parseAssembly(obj_arg b, b_obj_arg ctxObj, obj_arg r) {
     llvm::raw_string_ostream errMsgOStream(errMsg);
     parseAsmError.print("", errMsgOStream);
     errMsg = "parseAssembly failed (" + errMsgOStream.str() + ")";
-    return set_io_error( errMsg.c_str() );
+    return io_result_mk_error( errMsg.c_str() );
   }
 
-  return set_io_result(allocModuleObj(ctxObj, std::move(m)));
+  return io_result_mk_ok(allocModuleObj(ctxObj, std::move(m)));
 }
 
 obj_res lean_llvm_newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
@@ -1057,7 +1057,7 @@ obj_res lean_llvm_newModule( obj_arg ctxObj, obj_arg nmObj, obj_arg r ) {
   auto mod = new llvm::Module( nm, *ctx );
   auto modObj = allocModuleObj( ctxObj, std::unique_ptr<llvm::Module>(mod) );
 
-  return set_io_result( modObj );
+  return io_result_mk_ok( modObj );
 }
 
 obj_res lean_llvm_printModule( obj_arg modObj, obj_arg r ) {
@@ -1066,7 +1066,7 @@ obj_res lean_llvm_printModule( obj_arg modObj, obj_arg r ) {
   llvm::raw_os_ostream ros(std::cout);
   mod->print( ros, nullptr );
 
-  return set_io_result( box(0) );
+  return io_result_mk_ok( box(0) );
 }
 
 
@@ -1075,20 +1075,20 @@ obj_res lean_llvm_initNativeFns(obj_arg r) {
     LLVM_NATIVE_TARGETMC();
     LLVM_NATIVE_TARGET();
     LLVM_NATIVE_ASMPRINTER();
-    return set_io_result(box(0));
+    return io_result_mk_ok(box(0));
 }
 
 obj_res lean_llvm_getModuleIdentifier(b_obj_arg m, obj_arg r) {
-    return set_io_result(mk_string(toModule(m)->getModuleIdentifier()));
+    return io_result_mk_ok(mk_string(toModule(m)->getModuleIdentifier()));
 }
 
 obj_res lean_llvm_setModuleIdentifier(b_obj_arg m, b_obj_arg nm, obj_arg r) {
     toModule(m)->setModuleIdentifier(string_to_std(nm));
-    return set_io_result(box(0));
+    return io_result_mk_ok(box(0));
 }
 
 obj_res lean_llvm_getModuleDataLayoutStr(b_obj_arg m, obj_arg r) {
-    return set_io_result(mk_string(toModule(m)->getDataLayoutStr()));
+    return io_result_mk_ok(mk_string(toModule(m)->getDataLayoutStr()));
 }
 
 obj_res lean_llvm_getFunctionArray (b_obj_arg m, obj_arg r) {
@@ -1101,7 +1101,7 @@ obj_res lean_llvm_getFunctionArray (b_obj_arg m, obj_arg r) {
 	*(p++) = allocFunctionObj(m, &f);
     }
 
-    return set_io_result(arr);
+    return io_result_mk_ok(arr);
 }
 
 obj_res lean_llvm_getGlobalArray (b_obj_arg m, obj_arg r) {
@@ -1114,14 +1114,14 @@ obj_res lean_llvm_getGlobalArray (b_obj_arg m, obj_arg r) {
 	*(p++) = allocGlobalVarObj(m, &gv);
     }
 
-    return set_io_result(arr);
+    return io_result_mk_ok(arr);
 }
 
 
 obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
     auto cint = llvm::dyn_cast<llvm::ConstantInt>(toValue(c_obj));
     if (!cint) {
-	return set_io_result(mk_option_none());
+	return io_result_mk_ok(mk_option_none());
     }
 
     unsigned width = cint->getBitWidth();
@@ -1165,14 +1165,14 @@ obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
     }
 
     obj_res pair = mk_pair(box(width), val_obj);
-    return set_io_result(mk_option_some(pair));
+    return io_result_mk_ok(mk_option_some(pair));
 }
 
 obj_res lean_llvm_getConstExprData (b_obj_arg c_obj, obj_arg r ) {
   auto parent = valueParent(c_obj);
   auto cexpr = llvm::dyn_cast<llvm::ConstantExpr>(toValue(c_obj));
   if( !cexpr ) {
-    return set_io_result(mk_option_none() );
+    return io_result_mk_ok(mk_option_none() );
   }
 
   unsigned opcode = cexpr->getOpcode();
@@ -1188,10 +1188,10 @@ obj_res lean_llvm_getConstExprData (b_obj_arg c_obj, obj_arg r ) {
     } else {
       // FIXME... leaks memory here?
       std::string errMsg = "getConstExprData failed (expected constant value argument to constant expr)";
-      return set_io_error( errMsg.c_str() );
+      return io_result_mk_error( errMsg.c_str() );
     }
   }
-  return set_io_result( mk_option_some( mk_pair( box(opcode), arr )) );
+  return io_result_mk_ok( mk_option_some( mk_pair( box(opcode), arr )) );
 }
 
 obj_res lean_llvm_getConstArrayData( b_obj_arg c_obj, obj_arg r ) {
@@ -1199,7 +1199,7 @@ obj_res lean_llvm_getConstArrayData( b_obj_arg c_obj, obj_arg r ) {
   auto carr = llvm::dyn_cast<llvm::ConstantDataSequential>(toValue(c_obj));
 
   if( !carr ) {
-    return set_io_result( mk_option_none() );
+    return io_result_mk_ok( mk_option_none() );
   }
 
   auto elty = allocTypeObj(carr->getElementType());
@@ -1213,7 +1213,7 @@ obj_res lean_llvm_getConstArrayData( b_obj_arg c_obj, obj_arg r ) {
     *(p++) = allocValueObj( parent, elem );
   }
 
-  return set_io_result(mk_option_some( mk_pair( elty, arr )));
+  return io_result_mk_ok(mk_option_some( mk_pair( elty, arr )));
 }
 
 

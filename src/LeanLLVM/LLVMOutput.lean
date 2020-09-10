@@ -57,7 +57,7 @@ instance monadExcept : MonadExcept IO.Error Output :=
   }
 
 instance mIO : MonadIO Output :=
-  { monadLift := λa m r => m
+  { liftIO := λa m r => m
   }
 
 def run {a:Type} (m:Output a) : IO (Output.ValueContext × a) := do
@@ -99,7 +99,7 @@ def outputPrimType (ctx:FFI.Context) : PrimType → IO FFI.Type_
 | PrimType.integer n     => FFI.newIntegerType ctx n
 
 partial def outputType (ctx:FFI.Context) : LLVMType → Output FFI.Type_
-| LLVMType.prim pt => monadLift (outputPrimType ctx pt)
+| LLVMType.prim pt => liftIO (outputPrimType ctx pt)
 | LLVMType.alias nm => do
   x <- Output.lookupAlias nm;
   match x with
@@ -107,20 +107,20 @@ partial def outputType (ctx:FFI.Context) : LLVMType → Output FFI.Type_
   | none => throw (IO.userError ("Unknown type alias: " ++ nm))
 | LLVMType.array n t => do
   t' <- outputType t;
-  monadLift $ FFI.newArrayType n t'
+  liftIO $ FFI.newArrayType n t'
 | LLVMType.vector n t => do
   t' <- outputType t;
-  monadLift $ FFI.newVectorType n t'
+  liftIO $ FFI.newVectorType n t'
 | LLVMType.ptr t => do
   t' <- outputType t;
-  monadLift $ FFI.newPointerType t'
+  liftIO $ FFI.newPointerType t'
 | LLVMType.funType ret args varargs => do
   ret' <- outputType ret;
   args' <- Array.mapM outputType args;
-  monadLift $ FFI.newFunctionType ret' args' varargs
+  liftIO $ FFI.newFunctionType ret' args' varargs
 | LLVMType.struct packed tps => do
   tps' <- tps.mapM outputType;
-  monadLift $ FFI.newLiteralStructType packed tps'
+  liftIO $ FFI.newLiteralStructType packed tps'
 
 def setupTypeAlias (ctx:FFI.Context) (nm:String) : Output FFI.Type_ := λr => do 
   vc <- r.get;
@@ -133,7 +133,7 @@ def finalizeTypeAlias (ctx:FFI.Context) (ty:FFI.Type_) : TypeDeclBody → Output
 | TypeDeclBody.opaque => pure ()
 | TypeDeclBody.defn (LLVMType.struct packed tps) => do
   tps' <- tps.mapM (outputType ctx);
-  monadLift (FFI.setStructTypeBody ty packed tps');
+  liftIO (FFI.setStructTypeBody ty packed tps');
   pure ()
 | TypeDeclBody.defn _ => 
   throw (IO.userError "type alias defintion must be a struct body")
@@ -151,13 +151,13 @@ def outputTypeAliases (ctx:FFI.Context) (tds:Array TypeDecl) : Output Unit := do
 
 def outputDeclare (ctx:FFI.Context) (m:FFI.Module) (d:Declare) : Output Unit := do
   funtp <- outputType ctx (LLVMType.funType d.retType d.args d.varArgs);
-  f <- monadLift (FFI.newFunction m funtp d.name.symbol);
+  f <- liftIO (FFI.newFunction m funtp d.name.symbol);
   Output.alterSymbolMap (λsm => sm.insert d.name (FFI.functionToValue f))
 
 def outputDefine (ctx:FFI.Context) (m:FFI.Module) (d:Define) : Output Unit := do
   let argTypes := d.args.map (λa => a.type);
   funtp <- outputType ctx (LLVMType.funType d.retType argTypes d.varArgs);
-  f <- monadLift (FFI.newFunction m funtp d.name.symbol);
+  f <- liftIO (FFI.newFunction m funtp d.name.symbol);
   Output.alterSymbolMap (λsm => sm.insert d.name (FFI.functionToValue f));
   -- TODO!!!
   pure ()
@@ -167,7 +167,7 @@ def outputModule (ctx:FFI.Context) (m:Module) : Output FFI.Module := do
   let modnm := match m.sourceName with
                | some nm => nm
                | none    => "";
-  ffimod <- monadLift (FFI.newModule ctx modnm);
+  ffimod <- liftIO (FFI.newModule ctx modnm);
   Array.iterateM m.declares () (λ_ decl _ => outputDeclare ctx ffimod decl);
   Array.iterateM m.defines () (λ_ defn _ => outputDefine ctx ffimod defn);
   pure ffimod
