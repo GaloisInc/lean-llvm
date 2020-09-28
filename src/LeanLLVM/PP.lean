@@ -518,9 +518,9 @@ def ppDoc : Instruction → Doc
 | select cond x y =>
     text "select" <+> pp cond <> comma <+> pp x <> comma <+> pp x.type <+> pp y
 | extractvalue v i =>
-    text "extractvalue" <+> pp v <> comma <+> commas (i.map nat)
+    text "extractvalue" <+> pp v <> comma <+> commas (i.toList.map nat)
 | insertvalue v e i =>
-    text "insertvalue" <+> pp v <> comma <+> pp e <> comma <+> commas (nat <$> i)
+    text "insertvalue" <+> pp v <> comma <+> pp e <> comma <+> commas (i.toList.map nat)
 | extractelement v i =>
     text "extractelement" <+> pp v <> comma <+> pp_vector_index i
 | insertelement v e i =>

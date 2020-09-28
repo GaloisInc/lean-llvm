@@ -542,6 +542,25 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
        e <- extractTypedValue ctx ve;
        pure (Instruction.select c t e.value)
 
+   -- extractvalue 
+   | Code.Instr.ExtractValue => do
+     d <- liftIO (FFI.getExtractValueInstData rawinstr);
+     match d with
+     | none => throwError "expected extractvalue instruction"
+     | some (vag, idxs) => do
+       ag <- extractTypedValue ctx vag;
+       pure (Instruction.extractvalue ag idxs)
+
+   -- insertvalue
+   | Code.Instr.InsertValue => do
+     d <- liftIO (FFI.getInsertValueInstData rawinstr);
+     match d with
+     | none => throwError "expected extractvalue instruction"
+     | some (vag, (vel, idxs)) => do
+       ag <- extractTypedValue ctx vag;
+       el <- extractTypedValue ctx vel;
+       pure (Instruction.insertvalue ag el idxs)
+
    | _ => throwError $ "unimplemented instruction opcode: " ++ op.asString
 
 def extractStmt (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract Stmt := do

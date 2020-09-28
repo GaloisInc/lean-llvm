@@ -164,6 +164,13 @@ def getICmpInstData : @& Instruction -> IO (Option (Code.ICmp × (Value × Value
 @[extern 2 "lean_llvm_getSelectInstData"]
 def getSelectInstData : @& Instruction -> IO (Option (Value × (Value × Value))) := arbitrary _
 
+@[extern 2 "lean_llvm_getExtractValueInstData"]
+def getExtractValueInstData : @& Instruction -> IO (Option (Value × Array Nat)) := arbitrary _
+
+@[extern 2 "lean_llvm_getInsertValueInstData"]
+def getInsertValueInstData : @& Instruction -> IO (Option (Value × (Value × Array Nat))) := arbitrary _
+
+
 inductive BranchView
 | unconditional (b:BasicBlock)
 | conditional (c:Value) (t f : BasicBlock)

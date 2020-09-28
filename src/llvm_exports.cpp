@@ -866,6 +866,44 @@ obj_res lean_llvm_getSelectInstData(b_obj_arg i_obj, obj_arg r) {
 
 }
 
+obj_res lean_llvm_getExtractValueInstData(b_obj_arg i_obj, obj_arg r) {
+    auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
+    auto evi = llvm::dyn_cast<llvm::ExtractValueInst>(i);
+    if (!evi) {
+	return io_result_mk_ok(mk_option_none());
+    }
+    
+    unsigned n = evi->getNumIndices();
+    obj_res arr = alloc_array(n, n);
+    auto p = array_cptr(arr);    
+    for (auto idx : evi->indices())
+        *(p++) = box(idx);
+
+    obj_res tuple = mk_pair(allocValueObj(parent, evi->getAggregateOperand()), arr);
+    return io_result_mk_ok(mk_option_some(tuple));
+}
+
+obj_res lean_llvm_getInsertValueInstData(b_obj_arg i_obj, obj_arg r) {
+    auto i = toInstruction(i_obj);
+    auto parent = valueParent(i_obj);
+    auto evi = llvm::dyn_cast<llvm::InsertValueInst>(i);
+    if (!evi) {
+	return io_result_mk_ok(mk_option_none());
+    }
+    
+    unsigned n = evi->getNumIndices();
+    obj_res arr = alloc_array(n, n);
+    auto p = array_cptr(arr);    
+    for (auto idx : evi->indices())
+        *(p++) = box(idx);
+
+    obj_res tuple = mk_pair(allocValueObj(parent, evi->getAggregateOperand()),
+                            mk_pair(allocValueObj(parent, evi->getInsertedValueOperand()),
+                                                  arr));
+    return io_result_mk_ok(mk_option_some(tuple));
+}
+    
 obj_res lean_llvm_hasNoUnsignedWrap(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
     bool b = i->hasNoUnsignedWrap();
