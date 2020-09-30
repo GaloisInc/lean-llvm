@@ -284,6 +284,7 @@ partial def extractConstant : FFI.Constant -> extract Value
         pure $ ConstExpr.gep false none PrimType.void cs
       | _ =>
         throwError $ "unexpected (or unimplemented) constant instruction opcode: " ++ op.asString
+   | Code.Const.UndefValue => pure Value.undef
    | _ => throwError $ "unknown constant value: " ++ tag.asString
 
 def extractValue (ctx:ValueContext) (rawv:FFI.Value) : extract Value := do
@@ -300,6 +301,11 @@ def extractValue (ctx:ValueContext) (rawv:FFI.Value) : extract Value := do
     | some i => pure (Value.ident i)
   | FFI.ValueView.block b =>
     throwError "unimplemented: basic block value"
+  | FFI.ValueView.inlineasm i => do
+    (hasSideEffects, (isAlignStack, (asmString, constraintString))) <- 
+      liftIO (FFI.getInlineAsmData i);
+    pure (Value.asm hasSideEffects isAlignStack asmString constraintString)
+  
   | FFI.ValueView.unknown => throwError "unknown value"
 
 def extractBlockLabel (ctx:ValueContext) (bb:FFI.BasicBlock) : extract BlockLabel :=

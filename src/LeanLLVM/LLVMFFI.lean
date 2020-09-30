@@ -21,6 +21,7 @@ def BasicBlock := Value
 def Instruction := Value
 def Constant := Value
 def GlobalVar := Value
+def InlineAsm := Value
 
 constant Module := Unit
 constant MemoryBuffer := Unit
@@ -100,6 +101,7 @@ inductive ValueView
 | argument (a:Nat)
 | block (b:BasicBlock)
 | instruction (i:Instruction)
+| inlineasm (asm:InlineAsm)
 
 @[extern 2 "lean_llvm_decomposeValue"]
 def decomposeValue : @& Value -> IO ValueView := arbitrary _
@@ -108,6 +110,7 @@ def functionToValue (f:Function)       : Value := f
 def basicBlockToValue (bb:BasicBlock)  : Value := bb
 def instructionToValue (i:Instruction) : Value := i
 def constantToValue (c:Constant)       : Value := c
+-- def inlineAsmToValue (a:InlineAsm)     : Value := a
 
 ------------------------------------------------------------------------
 -- Constant
@@ -127,6 +130,12 @@ def getConstExprData : @& Constant -> IO (Option (Code.Instr × Array Constant))
 
 @[extern 2 "lean_llvm_getConstArrayData"]
 def getConstArrayData : @& Constant -> IO (Option (Type_ × Array Constant)) := arbitrary _
+
+------------------------------------------------------------------------
+-- InlineAsm
+
+@[extern 2 "lean_llvm_getInlineAsmData"]
+def getInlineAsmData : @& InlineAsm -> IO (Bool × (Bool × (String × String))) := arbitrary _
 
 ------------------------------------------------------------------------
 -- Instruction

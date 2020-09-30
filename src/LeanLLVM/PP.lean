@@ -423,6 +423,12 @@ partial def pp_value : Value → Doc
 | struct fs        => braces (commas (fs.toList.map (λf => f.pp_with pp_value)))
 | packedStruct fs  => packed_braces (commas (fs.toList.map (λf => f.pp_with pp_value)))
 | md d             => pp_md pp_value d
+| asm se astk a c  => text "asm" 
+                      <>  (if se then text " sideeffect" else empty)
+                      <>  (if astk then text " alignstack" else empty)
+                      <+> dquotes (text a)
+                      <>  text ","
+                      <+> dquotes (text c)
 
 instance : HasPP Value := ⟨pp_value⟩
 

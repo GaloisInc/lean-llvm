@@ -1,4 +1,5 @@
-/*
+// -*- c-basic-offset: 2; -*-
+/*  
 This module defines C functions needed for invoking LLVM
 from Lean.
 */
@@ -12,6 +13,7 @@ from Lean.
 #include <llvm/AsmParser/Parser.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/SourceMgr.h>
@@ -585,6 +587,13 @@ obj_res lean_llvm_decomposeValue(b_obj_arg v_obj, obj_arg r) {
 	x = alloc_cnstr(4, 1, 0);
 	cnstr_set(x, 0, v_obj);
 
+    } else if (auto i = llvm::dyn_cast<llvm::InlineAsm>(v)) {
+
+	// inlineasm (asm:InlineAsm)
+        inc_ref( v_obj );
+	x = alloc_cnstr(5, 1, 0);
+	cnstr_set(x, 0, v_obj);
+
     } else {
         // unknown_value  : value_decomposition
 
@@ -612,6 +621,19 @@ obj_res lean_llvm_getConstantName(b_obj_arg c_obj, obj_arg r) {
     return io_result_mk_ok(getOptionalNameObj(v->getValueName()));
 }
 
+obj_res lean_llvm_getInlineAsmData(b_obj_arg c_obj, obj_arg r) {
+  auto v = toValue(c_obj);
+  if( auto c = llvm::dyn_cast<llvm::InlineAsm>(v) ) {
+    auto ret = mk_pair(box(c->hasSideEffects())
+                       , mk_pair(box(c->isAlignStack())
+                                 , mk_pair(mk_string(c->getAsmString())
+                                           , mk_string(c->getConstraintString()))));    
+    return io_result_mk_ok(ret);
+  } else {
+    return io_result_mk_error( "expected llvm::InlineAsm value in 'getInlineAsmData'" );
+  }
+}    
+    
 uint8_t lean_llvm_instructionLt(b_obj_arg x, b_obj_arg y) {
   return toValue(x) < toValue(y);
 }
@@ -1167,11 +1189,7 @@ obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
 
     if (width <= 64) {
 	uint64_t val = cint->getValue().getZExtValue();
-	if (val <= LEAN_MAX_SMALL_NAT) {
-	    val_obj = box(val);
-	} else {
-	    val_obj = mk_nat_obj_core(mpz(val));
-	}
+        val_obj = uint64_to_nat(val);
     } else {
 	unsigned int i = cint->getValue().getNumWords();
 
@@ -1183,22 +1201,19 @@ obj_res lean_llvm_getConstIntData(b_obj_arg c_obj, obj_arg r) {
 	    // list of 64-bit limbs in little-endian order
 	    const uint64_t *rawvals = cint->getValue().getRawData();
 	    uint64_t val = rawvals[0];
-	    val_obj
-	       = (val <= LEAN_MAX_SMALL_NAT)
-	       ? box(val)
-	       : mk_nat_obj_core(mpz(val));
+            val_obj = uint64_to_nat(val);
 	} else {
 
 	    // list of 64-bit limbs in little-endian order
 	    const uint64_t *rawvals = cint->getValue().getRawData();
-	    mpz *m = new mpz(rawvals[--i]);
+	    mpz m = mpz(rawvals[--i]);
 
 	    while (i-- > 0) {
-		mul2k(*m, *m, 64);
-		*m |= mpz(rawvals[i]);
+		mul2k(m, m, 64);
+		m |= mpz(rawvals[i]);
 	    }
-
-	    val_obj = mk_nat_obj_core(*m);
+            
+	    val_obj = mk_nat_obj(m);
 	}
     }
 

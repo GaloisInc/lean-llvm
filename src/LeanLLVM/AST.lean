@@ -281,7 +281,7 @@ with Value : Type
      | label : BlockLabel -> Value
      | zeroInit : Value
      | md : ValMD -> Value
-  -- | asm : bool -> bool -> string -> string -> Value
+     | asm : Bool -> Bool -> String -> String -> Value -- hasSideEffects isAlignStack asmString constraintString
 
 with ConstExpr : Type
      | select : Typed Value -> Typed Value -> Typed Value -> ConstExpr
