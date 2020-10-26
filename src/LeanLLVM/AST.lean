@@ -315,7 +315,7 @@ inductive Instruction : Type
 | call (tailcall : Bool) (rtp:Option LLVMType) (fn:Value) (args:Array (Typed Value))
 | alloca (tp:LLVMType) (cnt:Option (Typed Value)) (align:Option Nat)
 | load (addr:Typed Value) (ord:Option AtomicOrdering) (align:Option Nat)
-| store (addr:Typed Value) (val:Typed Value) (align:Option Nat)
+| store (val:Typed Value) (addr:Typed Value) (align:Option Nat)
 /-
 | fence : option string -> atomic_ordering -> instruction
 | cmp_xchg (weak : bool) (volatile : bool) : Typed Value -> Typed Value -> Typed Value
