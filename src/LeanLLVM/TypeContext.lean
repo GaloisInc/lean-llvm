@@ -23,8 +23,9 @@ structure structInfo (α:Type) :=
 (size : Nat)
 (alignment : Alignment)
 
-mutual inductive sym_type, mem_type, fun_decl
-with sym_type : Type
+mutual 
+
+inductive sym_type : Type
   | mem_type : mem_type → sym_type
   | ty_alias : String → sym_type
   | fun_type : fun_decl → sym_type
@@ -32,7 +33,7 @@ with sym_type : Type
   | opaque   : sym_type
   | unsupported : LLVMType → sym_type
 
-with mem_type : Type
+inductive mem_type : Type
   | ptr      : sym_type → mem_type
   | int      : Nat → mem_type
   | array    : Nat → mem_type → mem_type
@@ -44,19 +45,21 @@ with mem_type : Type
 --  | double   :
 --  | x86_fp80 :
 
-with fun_decl : Type
+inductive fun_decl : Type
   | fun_decl : ∀(ret : Option mem_type) (args : List mem_type) (varargs : Bool), fun_decl
 
-namespace mem_type.
+end
+
+namespace mem_type
 
 partial def szAndAlign (dl:DataLayout) : mem_type → Nat × Alignment
 | ptr _            => (dl.ptrSize, dl.ptrAlign)
 | int n            => ((n+7)/8, computeIntegerAlignment dl.integerInfo n)
 | array n tp       =>
-  let (sz,a) := szAndAlign tp;
+  let (sz,a) := szAndAlign dl tp
   (n * padToAlignment sz a, a)
 | vector n tp      =>
-  let (sz,a) := szAndAlign tp;
+  let (sz,a) := szAndAlign dl tp
   let vsz := n * sz;
   (vsz, computeVectorAlignment dl.vectorInfo (8*vsz))
 | struct si        => (si.size, si.alignment)
@@ -66,7 +69,7 @@ def sz (dl:DataLayout) (mt:mem_type) : Nat := (szAndAlign dl mt).1
 
 def alignment (dl:DataLayout) (mt:mem_type) : Alignment := (szAndAlign dl mt).2
 
-end mem_type.
+end mem_type
 
 def compute_struct_info_aux (dl:DataLayout)
 : Nat → Alignment → Array (fieldInfo mem_type) → mem_type → List mem_type → structInfo mem_type
@@ -82,7 +85,7 @@ def compute_struct_info_aux (dl:DataLayout)
   let sz'  := padToAlignment tend (t'.alignment dl);
   let a'   := maxAlignment a talign;
   let fs'  := fs.push { value := t, offset := sz, padding := sz' - tend };
-  compute_struct_info_aux sz' a' fs' t' ts
+  compute_struct_info_aux dl sz' a' fs' t' ts
 
 def compute_struct_info (dl:DataLayout) : List mem_type -> structInfo mem_type
 | []    => { fields := Array.empty, size := 0, alignment := unaligned }
@@ -94,7 +97,7 @@ def compute_packed_struct_info_aux (dl:DataLayout)
 | sz, fs, t::ts =>
   let sz' := sz.add (t.sz dl);
   let fs' := fs.push { value := t, offset := sz, padding := 0 };
-  compute_packed_struct_info_aux sz' fs' ts
+  compute_packed_struct_info_aux dl sz' fs' ts
 
 def compute_packed_struct_info (dl:DataLayout) : List mem_type → structInfo mem_type :=
   compute_packed_struct_info_aux dl 0 Array.empty
@@ -108,7 +111,7 @@ def lookup_td (tds:Array TypeDecl) (i:String) : Option TypeDeclBody :=
    match decEq td.name i with
    | Decidable.isTrue _  => true
    | Decidable.isFalse _ => false
-   )).
+   ))
 
 
 partial def lift_sym_type (dl:DataLayout) (lift_mem_type : LLVMType → Option mem_type) (tds:Array TypeDecl)
@@ -126,13 +129,15 @@ partial def lift_sym_type (dl:DataLayout) (lift_mem_type : LLVMType → Option m
 | LLVMType.alias i => sym_type.ty_alias i
 
 | t@(LLVMType.funType ret args va) =>
-     let mt : Option fun_decl := (do
-          lift_mem_type ret >>= λret' =>
-            List.mapM lift_mem_type args.toList >>= λargs' =>
-            pure (fun_decl.fun_decl ret' args' va));
-     Option.casesOn mt (sym_type.unsupported t) sym_type.fun_type
+  let mt : Option fun_decl := (do
+       lift_mem_type ret >>= λret' =>
+         List.mapM lift_mem_type args.toList >>= λargs' =>
+         pure (fun_decl.fun_decl ret' args' va));
+  match mt with
+  | none => sym_type.unsupported t
+  | some t' => sym_type.fun_type t'
 
-| LLVMType.ptr t' => sym_type.mem_type (mem_type.ptr (lift_sym_type t'))
+| LLVMType.ptr t' => sym_type.mem_type (mem_type.ptr (lift_sym_type dl lift_mem_type tds t'))
 
 | t@(LLVMType.array n tp) =>
   match lift_mem_type tp with
@@ -145,12 +150,19 @@ partial def lift_sym_type (dl:DataLayout) (lift_mem_type : LLVMType → Option m
   | some m => sym_type.mem_type (mem_type.vector n m)
 
 | t@(LLVMType.struct false fs) =>
-     let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
-     Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_struct_info dl)
+  let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
+  match mt with
+  | none => sym_type.unsupported t
+  | some t' => 
+    sym_type.mem_type $ mem_type.struct $ compute_struct_info dl t'
 
 | t@(LLVMType.struct true fs) =>
-     let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
-     Option.casesOn mt (sym_type.unsupported t) (sym_type.mem_type ∘ mem_type.struct ∘ compute_packed_struct_info dl)
+  let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
+  match mt with
+  | none => sym_type.unsupported t
+  | some t' => 
+    sym_type.mem_type $ mem_type.struct $ compute_packed_struct_info dl t'
+
 
 partial def lift_mem_type (dl:DataLayout) (tds:Array TypeDecl) : LLVMType → Option mem_type
 | LLVMType.prim pt =>
@@ -162,25 +174,29 @@ partial def lift_mem_type (dl:DataLayout) (tds:Array TypeDecl) : LLVMType → Op
   | PrimType.void        => none
   | PrimType.floatType _ => none
   | PrimType.x86mmx      => none
-| LLVMType.ptr tp        => some (mem_type.ptr (lift_sym_type dl lift_mem_type tds tp))
-| LLVMType.alias i       =>
-     do b <- lookup_td tds i;
-        match b with
-        | TypeDeclBody.opaque   => none
-        | TypeDeclBody.defn tp' => lift_mem_type tp'
-| LLVMType.struct false fs  => (mem_type.struct ∘ compute_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
-| LLVMType.struct true fs   => (mem_type.struct ∘ compute_packed_struct_info dl) <$> (List.mapM lift_mem_type fs.toList)
-| LLVMType.array n tp       => mem_type.array n <$> lift_mem_type tp
-| LLVMType.vector n tp      => mem_type.vector n <$> lift_mem_type tp
+| LLVMType.ptr tp        => some (mem_type.ptr (lift_sym_type dl (lift_mem_type dl tds) tds tp))
+| LLVMType.alias i       => do 
+  let b ← lookup_td tds i
+  match b with
+  | TypeDeclBody.opaque   => none
+  | TypeDeclBody.defn tp' => lift_mem_type dl tds tp'
+| LLVMType.struct false fs  => do
+  let fs' ← fs.toList.mapM (lift_mem_type dl tds)
+  mem_type.struct $ compute_struct_info dl fs'
+| LLVMType.struct true fs   => do
+  let fs' ← fs.toList.mapM (lift_mem_type dl tds)
+  mem_type.struct $ compute_packed_struct_info dl fs'
+| LLVMType.array n tp       => mem_type.array n <$> lift_mem_type dl tds tp
+| LLVMType.vector n tp      => mem_type.vector n <$> lift_mem_type dl tds tp
 | LLVMType.funType _ _ _     => none
 
 def sym_type_to_mem_type (dl:DataLayout) (tds:Array TypeDecl) : sym_type -> Option mem_type
 | sym_type.mem_type mt => some mt
-| sym_type.ty_alias i  =>
-   do b <- lookup_td tds i;
-      match b with
-      | TypeDeclBody.opaque => none
-      | TypeDeclBody.defn tp => lift_mem_type dl tds tp
+| sym_type.ty_alias i  => do
+  let b ← lookup_td tds i
+  match b with
+  | TypeDeclBody.opaque => none
+  | TypeDeclBody.defn tp => lift_mem_type dl tds tp
 | _ => none
 
 end LLVM

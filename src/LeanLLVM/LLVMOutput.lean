@@ -27,10 +27,10 @@ def ValueMap := RBMap Ident FFI.Value (λx y => decide (x < y))
 def TypeMap := RBMap String FFI.Type_ (λx y => decide (x < y))
 
 structure ValueContext :=
-(symbolMap : SymMap)
-(blockMap  : BlockMap)
-(valueMap  : ValueMap)
-(typeMap   : TypeMap)
+  (symbolMap : SymMap)
+  (blockMap  : BlockMap)
+  (valueMap  : ValueMap)
+  (typeMap   : TypeMap)
 
 def ValueContext.init : ValueContext := 
   { symbolMap := Std.RBMap.empty,
@@ -41,36 +41,35 @@ def ValueContext.init : ValueContext :=
 
 end Output
 
-@[reducible]
-def Output (a:Type) := IO.Ref Output.ValueContext → IO a.
+def Output (a:Type) : Type := IO.Ref LLVM.Output.ValueContext → IO a
 
 namespace Output
 
 instance monad : Monad Output :=
-  { bind := λa b mx mf r => mx r >>= λx => mf x r
-  , pure := λa x r => pure x
+  { bind := λmx mf r => mx r >>= λx => mf x r
+  , pure := λ x r => pure x
   }
 
 instance monadExcept : MonadExcept IO.Error Output :=
-  { throw := λa err r => throw err,
-    catch := λa m handle r => catch (m r) (λerr => handle err r),
+  { throw := λ err r => throw err,
+    tryCatch := λ m handle r => tryCatch (m r) (λ err => handle err r),
   }
 
 instance mIO : MonadIO Output :=
-  { liftIO := λa m r => m
+  { liftIO := λm r => m
   }
 
 def run {a:Type} (m:Output a) : IO (Output.ValueContext × a) := do
-  r <- IO.mkRef Output.ValueContext.init;
-  a <- m r;
-  vc <- r.get;
+  let r <- IO.mkRef Output.ValueContext.init;
+  let a <- m r;
+  let vc <- r.get;
   pure (vc, a)
 
-def alterSymbolMap (f:SymMap → SymMap) : Output Unit := λr => 
+def alterSymbolMap (f:SymMap → SymMap) : Output Unit := λ r => 
   r.modify (λvc => { vc with symbolMap := f vc.symbolMap })
 
 def lookupAlias (nm:String) : Output (Option FFI.Type_) := λr => do
-  vc <- r.get;
+  let vc <- r.get;
   pure (vc.typeMap.find? nm)
 
 /-
@@ -101,30 +100,30 @@ def outputPrimType (ctx:FFI.Context) : PrimType → IO FFI.Type_
 partial def outputType (ctx:FFI.Context) : LLVMType → Output FFI.Type_
 | LLVMType.prim pt => liftIO (outputPrimType ctx pt)
 | LLVMType.alias nm => do
-  x <- Output.lookupAlias nm;
+  let x : Option FFI.Type_ <- Output.lookupAlias nm;
   match x with
   | some tp => pure tp
   | none => throw (IO.userError ("Unknown type alias: " ++ nm))
 | LLVMType.array n t => do
-  t' <- outputType t;
+  let t' <- outputType ctx t;
   liftIO $ FFI.newArrayType n t'
 | LLVMType.vector n t => do
-  t' <- outputType t;
+  let t' <- outputType ctx t;
   liftIO $ FFI.newVectorType n t'
 | LLVMType.ptr t => do
-  t' <- outputType t;
+  let t' <- outputType ctx t;
   liftIO $ FFI.newPointerType t'
 | LLVMType.funType ret args varargs => do
-  ret' <- outputType ret;
-  args' <- Array.mapM outputType args;
+  let ret' <- outputType ctx ret;
+  let args' <- Array.mapM (outputType ctx) args;
   liftIO $ FFI.newFunctionType ret' args' varargs
 | LLVMType.struct packed tps => do
-  tps' <- tps.mapM outputType;
+  let tps' <- tps.mapM (outputType ctx);
   liftIO $ FFI.newLiteralStructType packed tps'
 
 def setupTypeAlias (ctx:FFI.Context) (nm:String) : Output FFI.Type_ := λr => do 
-  vc <- r.get;
-  tp <- FFI.newOpaqueStructType ctx nm;
+  let vc <- r.get;
+  let tp <- FFI.newOpaqueStructType ctx nm;
   let vc' := { vc with typeMap := vc.typeMap.insert nm tp };
   r.set vc';
   pure tp
@@ -132,7 +131,7 @@ def setupTypeAlias (ctx:FFI.Context) (nm:String) : Output FFI.Type_ := λr => do
 def finalizeTypeAlias (ctx:FFI.Context) (ty:FFI.Type_) : TypeDeclBody → Output Unit
 | TypeDeclBody.opaque => pure ()
 | TypeDeclBody.defn (LLVMType.struct packed tps) => do
-  tps' <- tps.mapM (outputType ctx);
+  let tps' <- tps.mapM (outputType ctx);
   liftIO (FFI.setStructTypeBody ty packed tps');
   pure ()
 | TypeDeclBody.defn _ => 
@@ -144,20 +143,21 @@ def finalizeTypeAlias (ctx:FFI.Context) (ty:FFI.Type_) : TypeDeclBody → Output
 --
 -- This two-phase approach ensures that recursive struct groups are properly handled.
 def outputTypeAliases (ctx:FFI.Context) (tds:Array TypeDecl) : Output Unit := do
-   fs <- tds.mapM (λtd => 
+   let fs <- tds.mapM (λtd => 
      setupTypeAlias ctx td.name >>= λty => pure (finalizeTypeAlias ctx ty td.decl));
-   Array.iterateM fs () (λ_ action _ => action)
+   for action in fs do
+     action
 
 
 def outputDeclare (ctx:FFI.Context) (m:FFI.Module) (d:Declare) : Output Unit := do
-  funtp <- outputType ctx (LLVMType.funType d.retType d.args d.varArgs);
-  f <- liftIO (FFI.newFunction m funtp d.name.symbol);
+  let funtp <- outputType ctx (LLVMType.funType d.retType d.args d.varArgs);
+  let f <- liftIO (FFI.newFunction m funtp d.name.symbol);
   Output.alterSymbolMap (λsm => sm.insert d.name (FFI.functionToValue f))
 
 def outputDefine (ctx:FFI.Context) (m:FFI.Module) (d:Define) : Output Unit := do
   let argTypes := d.args.map (λa => a.type);
-  funtp <- outputType ctx (LLVMType.funType d.retType argTypes d.varArgs);
-  f <- liftIO (FFI.newFunction m funtp d.name.symbol);
+  let funtp <- outputType ctx (LLVMType.funType d.retType argTypes d.varArgs);
+  let f <- liftIO (FFI.newFunction m funtp d.name.symbol);
   Output.alterSymbolMap (λsm => sm.insert d.name (FFI.functionToValue f));
   -- TODO!!!
   pure ()
@@ -167,9 +167,11 @@ def outputModule (ctx:FFI.Context) (m:Module) : Output FFI.Module := do
   let modnm := match m.sourceName with
                | some nm => nm
                | none    => "";
-  ffimod <- liftIO (FFI.newModule ctx modnm);
-  Array.iterateM m.declares () (λ_ decl _ => outputDeclare ctx ffimod decl);
-  Array.iterateM m.defines () (λ_ defn _ => outputDefine ctx ffimod defn);
+  let ffimod <- liftIO (FFI.newModule ctx modnm);
+  for decl in m.declares do
+    outputDeclare ctx ffimod decl
+  for defn in m.defines do
+    outputDefine ctx ffimod defn
   pure ffimod
 
 end LLVM

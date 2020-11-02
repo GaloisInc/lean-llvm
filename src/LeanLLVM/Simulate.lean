@@ -10,13 +10,16 @@ import LeanLLVM.Value
 namespace LLVM
 namespace Sim
 
-def unreachable {a} : Sim a := throw (IO.userError "unreachable code!").
+def unreachable {a} : Sim a := throw (IO.userError "unreachable code!")
 
 def int_op (f:∀w, bitvec w -> bitvec w -> Sim Sim.Value) : Sim.Value -> Sim.Value -> Sim Sim.Value
-| @Value.bv wx vx, @Value.bv wy vy =>
-  match decEq wy wx with
-  | Decidable.isTrue p  => f wx vx (Eq.rec vy p)
-  | Decidable.isFalse _ => throw (IO.userError "expected same-width integer values")
+| @Value.bv w v, @Value.bv w' v' =>
+  if h : w' = w
+  then
+    let v'' : bitvec w := cast (congrArg bitvec h) v'
+    f _ v v''
+  else
+    throw $ IO.userError "expected same-width integer values"
 | _, _ => throw (IO.userError "expected integer arguments to int_op")
 
 -- TODO, implement overflow checks
@@ -25,7 +28,7 @@ def eval_arith (op:ArithOp) (x:Sim.Value) (y:Sim.Value) : Sim Sim.Value :=
   | ArithOp.add uof sof => int_op (λ w a b => pure (Value.bv (@bitvec.add w a b))) x y
   | ArithOp.sub uof sof => int_op (λ w a b => pure (Value.bv (@bitvec.sub w a b))) x y
   | ArithOp.mul uof sof => int_op (λ w a b => pure (Value.bv (@bitvec.mul w a b))) x y
-  | _ => throw (IO.userError "NYE: unimplemented arithmetic operation").
+  | _ => throw (IO.userError "NYE: unimplemented arithmetic operation")
 
 def asPred : Sim.Value → Sim Bool
 | Value.bv v => if v.to_nat = 0 then pure false else pure true
@@ -94,7 +97,7 @@ def eval_conv : ConvOp → mem_type → Sim.Value → mem_type → Sim Sim.Value
 
 def phi (t:mem_type) (prv:BlockLabel) : List (LLVM.Value × BlockLabel) → Sim Sim.Value
 | [] => throw (IO.userError "phi node not defined for predecessor node")
-| (v,l)::xs => if prv = l then eval t v else phi xs
+| (v,l)::xs => if prv = l then eval t v else phi t prv xs
 
 
 def computeGEP {w} (dl:DataLayout) : bitvec w → List Sim.Value → mem_type → Sim (bitvec w)
@@ -103,16 +106,16 @@ def computeGEP {w} (dl:DataLayout) : bitvec w → List Sim.Value → mem_type �
     match ty with
     | mem_type.array _n ty' =>
          if w = w' then
-           let (sz,a) := mem_type.szAndAlign dl ty';
+           let (sz,a) := mem_type.szAndAlign dl ty'
            let sz' := padToAlignment sz a;
-           let idx := bitvec.of_int w (v.to_int * (Int.ofNat sz'));
-           computeGEP (bitvec.add base idx) offsets ty'
+           let idx := bitvec.of_int w (v.to_int * (Int.ofNat sz'))
+           computeGEP dl (bitvec.add base idx) offsets ty'
          else
            throw (IO.userError "invalid array index value in GEP")
 
     | mem_type.struct si =>
          match si.fields.get? v.to_nat with
-         | (some fi) => computeGEP (bitvec.add base (bitvec.of_nat w fi.offset)) offsets fi.value
+         | (some fi) => computeGEP dl (bitvec.add base (bitvec.of_nat w fi.offset)) offsets fi.value
          | none => throw (IO.userError "invalid struct index value in GEP")
 
     | _ => throw (IO.userError "Invalid GEP")
@@ -123,143 +126,145 @@ def computeGEP {w} (dl:DataLayout) : bitvec w → List Sim.Value → mem_type �
 def evalInstr : Instruction → Sim (Option Sim.Value)
 | Instruction.retVoid => Sim.returnVoid
 | Instruction.ret v    => eval_typed v >>= Sim.returnValue
-| Instruction.phi tp xs =>
-     do frm <- Sim.getFrame;
-        t  <- eval_mem_type tp;
-        match frm.prev with
-        | none => throw (IO.userError "phi nodes not allowed in entry block")
-        | some prv => some <$> phi t prv xs.toList
+| Instruction.phi tp xs => do
+  let frm ← Sim.getFrame
+  let t  ← eval_mem_type tp
+  match frm.prev with
+  | none => throw (IO.userError "phi nodes not allowed in entry block")
+  | some prv => some <$> phi t prv xs.toList
 
-| Instruction.arith op x y =>
-     do t  <- eval_mem_type x.type;
-        xv <- eval t x.value;
-        yv <- eval t y;
-        some <$> eval_arith op xv yv
+| Instruction.arith op x y => do
+  let t  ← eval_mem_type x.type
+  let xv ← eval t x.value
+  let yv ← eval t y
+  some <$> eval_arith op xv yv
 
-| Instruction.bit op x y =>
-     do t  <- eval_mem_type x.type;
-        xv <- eval t x.value;
-        yv <- eval t y;
-        some <$> eval_bit op xv yv
+| Instruction.bit op x y => do
+  let t  ← eval_mem_type x.type
+  let xv ← eval t x.value
+  let yv ← eval t y
+  some <$> eval_bit op xv yv
 
-| Instruction.conv op x outty =>
-     do t  <- eval_mem_type x.type;
-        xv <- eval t x.value;
-        t' <- eval_mem_type outty;
-        some <$> eval_conv op t xv t'
+| Instruction.conv op x outty => do
+  let t  ← eval_mem_type x.type
+  let xv ← eval t x.value
+  let t' ← eval_mem_type outty
+  some <$> eval_conv op t xv t'
 
-| Instruction.icmp op x y =>
-     do t  <- eval_mem_type x.type;
-        xv <- eval t x.value;
-        yv <- eval t y;
-        some <$> eval_icmp op xv yv
+| Instruction.icmp op x y => do
+  let t  ← eval_mem_type x.type;
+  let xv ← eval t x.value;
+  let yv ← eval t y;
+  some <$> eval_icmp op xv yv
 
-| Instruction.select c x y =>
-     do cv <- eval_typed c >>= asPred;
-        t  <- eval_mem_type x.type;
-        xv <- eval t x.value;
-        yv <- eval t y;
-        if cv then pure (some xv) else pure (some yv)
+| Instruction.select c x y => do
+  let cv ← eval_typed c >>= asPred
+  let t  ← eval_mem_type x.type
+  let xv ← eval t x.value
+  let yv ← eval t y
+  if cv then pure (some xv) else pure (some yv)
 
-| Instruction.call _tail _rettp fn args =>
-     do fnv <- eval (mem_type.ptr sym_type.void) fn; -- TODO? more accurate type?
-        st <- Sim.getState;
-        match fnv with
-        | @Value.bv 64 bv =>
-          match st.revsymmap.find? bv with
-          | some s => List.mapM eval_typed args.toList >>= Sim.call s
-          | none => throw (IO.userError "expected function pointer value in call")
-        | _ => throw (IO.userError "expected pointer value in call")
+| Instruction.call _tail _rettp fn args => do
+  let fnv ← eval (mem_type.ptr sym_type.void) fn -- TODO? more accurate type?
+  let st ← Sim.getState;
+  match fnv with
+  | @Value.bv 64 bv =>
+    match st.revsymmap.find? bv with
+    | some s => List.mapM eval_typed args.toList >>= Sim.call s
+    | none => throw (IO.userError "expected function pointer value in call")
+  | _ => throw (IO.userError "expected pointer value in call")
 
 | Instruction.jump l => Sim.jump l
 
-| Instruction.br c lt lf =>
-     do cv <- eval_typed c >>= asPred;
-        if cv then Sim.jump lt else Sim.jump lf
+| Instruction.br c lt lf => do
+  let cv ← eval_typed c >>= asPred;
+  if cv then Sim.jump lt else Sim.jump lf
 
 | Instruction.unreachable => unreachable
 
-| Instruction.load ptr _atomicordering _oalign =>
-   do st <- Sim.getState;
-      let dl := st.dl;
-      let tds := st.mod.types;
-      mt <- eval_mem_type ptr.type;
-      pv <- eval mt ptr.value;
-      match mt, pv with
-      | mem_type.ptr st, @Value.bv 64 p =>
-          match sym_type_to_mem_type dl tds st with
-          | some loadtp =>
-               do v <- Mem.load dl loadtp p;
-                  Sim.trace (trace_event.load p loadtp v);
-                  pure (some v)
-          | none => throw (IO.userError "expected loadable pointer type in load" )
-      | _, _ => throw (IO.userError "expected pointer value in load" )
+| Instruction.load ptr _atomicordering _oalign => do
+  let st ← Sim.getState
+  let dl := st.dl
+  let tds := st.mod.types
+  let mt ← eval_mem_type ptr.type
+  let pv ←  eval mt ptr.value
+  match mt, pv with
+  | mem_type.ptr st, @Value.bv 64 p =>
+      match sym_type_to_mem_type dl tds st with
+      | some loadtp => do
+        let v ← Mem.load dl loadtp p;
+        Sim.trace (trace_event.load p loadtp v);
+        pure (some v)
+      | none => throw $ IO.userError "expected loadable pointer type in load"
+  | _, _ => throw (IO.userError "expected pointer value in load" )
 
-| Instruction.store val ptr _align =>
-   do st <- Sim.getState;
-      pv <- eval_typed ptr;
-      match pv with
-      | @Value.bv 64 p =>
-            do mt <- eval_mem_type val.type;
-               v <- eval mt val.value;
-               Mem.store st.dl mt p v;
-               Sim.trace (trace_event.store p mt v);
-               pure none
-      | _ => throw (IO.userError "expected pointer value in store" )
+| Instruction.store val ptr _align => do
+   let st ← Sim.getState
+   let pv ← eval_typed ptr
+   match pv with
+   | @Value.bv 64 p => do
+     let mt ← eval_mem_type val.type;
+     let v ← eval mt val.value;
+     Mem.store st.dl mt p v;
+     Sim.trace (trace_event.store p mt v);
+     pure none
+   | _ => throw (IO.userError "expected pointer value in store" )
 
-| Instruction.alloca tp onum oalign =>
-    do mt <- eval_mem_type tp;
-       dl <- State.dl <$> Sim.getState;
-       sz <- match onum with
+| Instruction.alloca tp onum oalign => do
+    let mt ← eval_mem_type tp;
+    let dl ← State.dl <$> Sim.getState;
+    let sz ← match onum with
              | none => pure (mt.sz dl)
-             | some num =>
-                 (do n <- eval_typed num;
-                    match n with
-                    | Value.bv n' => pure ((mt.sz dl).mul n'.to_nat)
-                    | _ => throw (IO.userError "expected integer value in alloca instruction"));
-       a <- match oalign with
-            | none => pure (mt.alignment dl)
-            | some align =>
-              match toAlignment align with
-              | none => throw (IO.userError ("illegal alignment value in alloca: " ++ toString align))
-              | some a => pure (maxAlignment (mt.alignment dl) a);
-       ptr <- (do st <- Sim.getState;
-                  let (p,st') := allocOnStack sz a st;
-                  Sim.setState st';
-                  pure p);
-       Sim.trace (trace_event.alloca ptr sz);
-       pure (some (Value.bv ptr))
+             | some num => do
+               let n ← eval_typed num
+               match n with
+               | Value.bv n' => pure $ (mt.sz dl).mul n'.to_nat
+               | _ => throw $ IO.userError "expected integer value in alloca instruction"
+     let a ← match oalign with
+             | none => pure (mt.alignment dl)
+             | some align =>
+               match toAlignment align with
+               | none => throw (IO.userError ("illegal alignment value in alloca: " ++ toString align))
+               | some a => pure (maxAlignment (mt.alignment dl) a);
+     let ptr ← do 
+       let st ←  Sim.getState
+       let (p,st') := allocOnStack sz a st
+       Sim.setState st'
+       pure p
+     Sim.trace (trace_event.alloca ptr sz);
+     pure (some (Value.bv ptr))
 
 
-| Instruction.gep _bounds base offsets =>
-     do dl <- State.dl <$> Sim.getState;
-        tds <- (Module.types ∘ State.mod) <$> Sim.getState;
-        baseType <- eval_mem_type base.type;
-        match baseType with
-        | mem_type.ptr stp =>
-          match sym_type_to_mem_type dl tds stp with
-          | some mt =>
-             do base' <- eval baseType base.value;
-                offsets' <- Array.mapM eval_typed offsets;
-                match base' with
-                | Value.bv baseptr =>
-                    (some ∘ Value.bv) <$> computeGEP dl baseptr offsets'.toList (mem_type.array 0 mt)
-                | _ => throw (IO.userError "Expected bitvector in GEP base value")
-          | none => throw (IO.userError "Invalid GEP, bad base type")
-        | _ => throw (IO.userError "Expected pointer type in GEP base")
+| Instruction.gep _bounds base offsets => do
+  let dl ← State.dl <$> Sim.getState
+  let tds ← (Module.types ∘ State.mod) <$> Sim.getState
+  let baseType ← eval_mem_type base.type
+  match baseType with
+  | mem_type.ptr stp =>
+    match sym_type_to_mem_type dl tds stp with
+    | some mt => do
+      let base' ← eval baseType base.value
+      let offsets' ← Array.mapM eval_typed offsets
+      match base' with
+      | Value.bv baseptr =>
+        (some ∘ Value.bv) <$> computeGEP dl baseptr offsets'.toList (mem_type.array 0 mt)
+      | _ => throw $ IO.userError "Expected bitvector in GEP base value"
+    | none => throw $ IO.userError "Invalid GEP, bad base type"
+  | _ => throw $ IO.userError "Expected pointer type in GEP base"
 
 
-| _ => throw (IO.userError "NYE: unimplemented instruction")
+| _ => throw $ IO.userError "NYE: unimplemented instruction"
 
-def evalStmt (s:Stmt) : Sim Unit :=
-  do res <- evalInstr s.instr;
-     match (s.assign, res) with
-     | (none, _)        => pure ()
-     | (some i, some v) => Sim.assignReg i v
-     | (some _, none)   => throw (IO.userError "expected instruction to compute a value").
+def evalStmt (s:Stmt) : Sim Unit := do
+  let res ← evalInstr s.instr
+  match (s.assign, res) with
+  | (none, _)        => pure ()
+  | (some i, some v) => Sim.assignReg i v
+  | (some _, none)   => throw $ IO.userError "expected instruction to compute a value"
 
-def evalStmts (stmts:Array Stmt) : Sim Unit :=
-  Array.foldlM (λ_ s => evalStmt s) () stmts
+def evalStmts (stmts:Array Stmt) : Sim Unit := do
+  for s in stmts do
+    evalStmt s
 
 def findBlock (l:BlockLabel) (func:Define) : Sim (Array Stmt) :=
   match Array.find? func.body (λbb =>
@@ -267,7 +272,7 @@ def findBlock (l:BlockLabel) (func:Define) : Sim (Array Stmt) :=
     | Decidable.isTrue _ => true
     | Decidable.isFalse _ => false) with
   | none => throw (IO.userError ("Could not find block: " ++ (pp l).render))
-  | some d => pure d.stmts .
+  | some d => pure d.stmts
 
 def findFunc (s:Symbol) (mod:Module) : Sim Define :=
   match Array.find? mod.defines (λd =>
@@ -275,7 +280,7 @@ def findFunc (s:Symbol) (mod:Module) : Sim Define :=
     | Decidable.isTrue _ => true
     | Decidable.isFalse _ => false) with
   | none => throw (IO.userError ("Could not find function: " ++ s.symbol))
-  | some d => pure d.
+  | some d => pure d
 
 partial def execBlock {z}
     (_zinh:z)
@@ -290,7 +295,7 @@ partial def execBlock {z}
       { kerr  := kerr
       , kret  := kret
       , kcall := kcall
-      , kjump := execBlock
+      , kjump := execBlock _zinh kerr kret kcall ktrace
       , ktrace := ktrace
       }
       (λ _ _ _ => kerr $ IO.userError ("expected block terminatror at the end of block: "
@@ -301,7 +306,7 @@ partial def execBlock {z}
 def assignArgs : List (Typed Ident) → List Sim.Value → regMap → Sim regMap
 | [], [], regs => pure regs
 | f::fs, a::as, regs => assignArgs fs as (Std.RBMap.insert regs f.value a)
-| _, _, _ => throw (IO.userError ("Acutal/formal argument mismatch")).
+| _, _, _ => throw (IO.userError ("Acutal/formal argument mismatch"))
 
 def entryLabel (d:Define) : Sim BlockLabel :=
   match Array.get? d.body 0 with
@@ -312,30 +317,32 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z) (ktrace : trace_event �
   : (Option Sim.Value → State → z) → Symbol → List Sim.Value → State → z
 
 | kret, s, args, st =>
-   (do func   <- findFunc s st.mod;
-       locals <- assignArgs func.args.toList args Std.RBMap.empty;
-       lab    <- entryLabel func;
-       Sim.setFrame (frame.mk locals func lab none st.stackPtr);
-       findBlock lab func >>= evalStmts
-   ).runSim
-      { kerr  := kerr
-      , kret  := kret
-      , kcall := execFunc
-      , kjump := execBlock zinh kerr kret execFunc ktrace
-      , ktrace := ktrace
-      }
-      (λ_ _ _ => kerr (IO.userError "unterminated basic block!"))
-      (arbitrary _)
-      st.
+  let kcall := execFunc zinh kerr ktrace
+  let simulation : Sim Unit := do
+    let func   ← findFunc s st.mod
+    let locals ← assignArgs func.args.toList args Std.RBMap.empty
+    let lab    ← entryLabel func
+    Sim.setFrame (frame.mk locals func lab none st.stackPtr)
+    findBlock lab func >>= evalStmts
+  simulation.runSim
+    { kerr  := kerr
+    , kret  := kret
+    , kcall := kcall
+    , kjump := execBlock zinh kerr kret kcall ktrace
+    , ktrace := ktrace
+    }
+    (λ_ _ _ => kerr (IO.userError "unterminated basic block!"))
+    (arbitrary _)
+    st
 
 def runFunc : Symbol → List Sim.Value → State → Sum IO.Error (Option Sim.Value × State) :=
-  execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λ_ z => z) (λov st => Sum.inr (ov,st)).
+  execFunc (Sum.inl (IO.userError "bottom")) Sum.inl (λ_ z => z) (λov st => Sum.inr (ov,st))
 
 def runFuncPrintTrace : Symbol → List Sim.Value → State → IO (Option Sim.Value × State) :=
   execFunc (throw (IO.userError "bottom"))
            throw
            (λev next => IO.println ev.asString >>= λ_ => next)
-           (λov st => pure (ov, st)).
+           (λov st => pure (ov, st))
 
 end Sim
 end LLVM

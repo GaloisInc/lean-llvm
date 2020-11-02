@@ -12,10 +12,10 @@ namespace LLVM
 namespace Sim
 
 inductive Value : Type
-| bv {w : Nat} (x:bitvec w)
-| vec (eltTp:mem_type) (x:Array Value)
-| array (eltTp:mem_type) (values:Array Value)
-| struct (fields:Array (fieldInfo Value))
+| bv {w : Nat} (x:bitvec w) : Value
+| vec (eltTp:mem_type) (x:Array Value) : Value
+| array (eltTp:mem_type) (values:Array Value) : Value
+| struct (fields:Array (fieldInfo Value)) : Value
 
 namespace Value
 
@@ -30,10 +30,10 @@ def asString (v:Value) : String := Doc.render (pretty v)
 end Value
 
 @[reducible]
-def memMap := @RBMap (bitvec 64) (bitvec 8) (λx y => decide (bitvec.ult x y)).
+def memMap := @RBMap (bitvec 64) (bitvec 8) (λx y => decide (bitvec.ult x y))
 
 @[reducible]
-def regMap := @RBMap Ident Value (λx y => decide (x < y)).
+def regMap := @RBMap Ident Value (λx y => decide (x < y))
 
 end Sim
 end LLVM
