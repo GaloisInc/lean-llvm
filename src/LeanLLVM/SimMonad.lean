@@ -78,62 +78,62 @@ structure Sim (a:Type) :=
 namespace Sim
 
 instance {a:Type} : Inhabited (Sim a) :=
-  ⟨ ⟨λz conts k f st => conts.kerr (IO.userError "black hole")⟩ ⟩
+  ⟨ ⟨λconts k f st => conts.kerr (IO.userError "black hole")⟩ ⟩
 
 instance monad : Monad Sim :=
-  { bind := λa b mx mf => Sim.mk (λz conts k =>
+  { bind := λmx mf => Sim.mk (λconts k =>
        mx.runSim conts (λx => (mf x).runSim conts k))
-  , pure := λa x => Sim.mk (λz _ k => k x)
+  , pure := λx => Sim.mk (λ_ k => k x)
   }
 
 instance monadExcept : MonadExcept IO.Error Sim :=
-  { throw := λa err => Sim.mk (λz conts _k _frm _st => conts.kerr err)
-  , catch := λa m handle => Sim.mk (λz conts k frm st =>
+  { throw := λerr => Sim.mk (λconts _k _frm _st => conts.kerr err)
+  , tryCatch := λm handle => Sim.mk (λconts k frm st =>
       let conts' := { conts with kerr := λerr => (handle err).runSim conts k frm st };
       m.runSim conts' k frm st)
-  }.
+  }
 
 def setFrame (frm:frame) : Sim Unit :=
-  Sim.mk (λz _ k _ st => k () frm st).
+  Sim.mk (λ _ k _ st => k () frm st)
 
 def getFrame : Sim frame :=
-  Sim.mk (λz _ k frm st => k frm frm st).
+  Sim.mk (λ _ k frm st => k frm frm st)
 
 def modifyFrame (f: frame → frame) : Sim Unit :=
-  Sim.mk (λz _ k frm st => k () (f frm) st).
+  Sim.mk (λ _ k frm st => k () (f frm) st)
 
 def getState : Sim State :=
-  Sim.mk (λz _ k frm st => k st frm st).
+  Sim.mk (λ _ k frm st => k st frm st)
 
 def setState (st:State) : Sim Unit :=
-  Sim.mk (λz _ k frm _ => k () frm st).
+  Sim.mk (λ _ k frm _ => k () frm st)
 
 def assignReg (reg:Ident) (v:Value) : Sim Unit :=
-  modifyFrame (λfrm => { frm with locals := Std.RBMap.insert frm.locals reg v }).
+  modifyFrame (λfrm => { frm with locals := Std.RBMap.insert frm.locals reg v })
 
 def trace (ev:trace_event) : Sim Unit :=
-  Sim.mk (λz conts k frm st => conts.ktrace ev (k () frm st))
+  Sim.mk (λ conts k frm st => conts.ktrace ev (k () frm st))
 
 def lookupReg (reg:Ident) : Sim Value := do
-  frm <- getFrame;
+  let frm ← getFrame
   match Std.RBMap.find? frm.locals reg with
   | none     => throw (IO.userError ("unassigned register: " ++ reg.asString))
   | some v => pure v
 
 def returnVoid {a} : Sim a :=
-  Sim.mk (λz conts _k frm st => conts.kret none { st with stackPtr := frm.framePtr }).
+  Sim.mk (λ conts _k frm st => conts.kret none { st with stackPtr := frm.framePtr })
 
 def returnValue {a} (v:Sim.Value) : Sim a :=
-  Sim.mk (λz conts _k frm st => conts.kret (some v) { st with stackPtr := frm.framePtr }).
+  Sim.mk (λ conts _k frm st => conts.kret (some v) { st with stackPtr := frm.framePtr })
 
 def jump {a} (l:BlockLabel) : Sim a :=
-  Sim.mk (λz conts _k frm st => conts.kjump l frm st).
+  Sim.mk (λ conts _k frm st => conts.kjump l frm st)
 
 def call (s:Symbol) (args:List Value) : Sim (Option Value) :=
-  Sim.mk (λz conts k frm st => conts.kcall (λv => k v frm) s args st).
+  Sim.mk (λ conts k frm st => conts.kcall (λv => k v frm) s args st)
 
 def eval_mem_type (t:LLVMType) : Sim mem_type := do
-  st <- Sim.getState;
+  let st ← Sim.getState
   match lift_mem_type st.dl st.mod.types t with
   | none => throw (IO.userError ("could not lift type: " ++ (pp t).render))
   | some mt => pure mt
@@ -147,19 +147,19 @@ partial def eval : mem_type → LLVM.Value → Sim Sim.Value
 | mem_type.int w, Value.zeroInit   => pure (Value.bv (bitvec.of_int w 0))
 | mem_type.int w, Value.undef      => pure (Value.bv (bitvec.of_int w 0)) --???
 | mem_type.ptr _, Value.symbol s   => do
-  st <- Sim.getState;
+  let st ← Sim.getState;
   match st.symmap.find? s with
   | some ptr => pure (Value.bv ptr)
   | none => throw (IO.userError ("could not resolve symbol: " ++ s.symbol))
 
 | mem_type.array _n eltp, LLVM.Value.array _tp vs => do
-  vs' <- vs.mapM (eval eltp);
+  let vs' <- vs.mapM (eval eltp)
   pure (Value.array eltp vs')
 
 | _, v => throw (IO.userError ("bad Value/type in evaluation: " ++ (pp v).render))
 
 def eval_typed (tv:Typed LLVM.Value) : Sim Sim.Value := do
-  mt <- eval_mem_type tv.type;
+  let mt ← eval_mem_type tv.type
   eval mt tv.value
 
 end Sim

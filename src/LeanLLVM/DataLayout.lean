@@ -31,19 +31,19 @@ open LayoutSpec
 
 def pointer_spec : parse LayoutSpec :=
   parse.describe "pointer spec spec" $ do
-     addrSpace <- parse.opt 0 parse.nat;
-     sz   <- parse.textThen ":" parse.nat;
-     abi  <- parse.textThen ":" parse.nat;
-     pref <- parse.textThen ":" parse.nat;
-     idx  <- parse.opt' (parse.textThen ":" parse.nat);
+     let addrSpace <- parse.opt 0 parse.nat;
+     let sz   <- parse.textThen ":" parse.nat;
+     let abi  <- parse.textThen ":" parse.nat;
+     let pref <- parse.textThen ":" parse.nat;
+     let idx  <- parse.opt' (parse.textThen ":" parse.nat);
      pure (pointerSize addrSpace sz abi pref idx)
 
 def size_spec (t:AlignType) : parse LayoutSpec :=
   parse.describe "size spec" $ do
-     sz  <- parse.nat;
-     abi  <- parse.textThen ":" parse.nat;
-     pref <- parse.opt' (parse.textThen ":" parse.nat);
-     pure (alignSize t sz abi pref).
+     let sz  <- parse.nat;
+     let abi  <- parse.textThen ":" parse.nat;
+     let pref <- parse.opt' (parse.textThen ":" parse.nat);
+     pure (alignSize t sz abi pref)
 
 def layout_spec : parse LayoutSpec :=
   parse.describe "layout spec" $
@@ -74,14 +74,14 @@ end LLVM
 namespace LLVM
 
 structure DataLayout :=
-(intLayout          : Endian)
-(stackAlignment     : Alignment)
-(aggregateAlignment : Alignment)
-(ptrSize            : Nat) -- size in bytes
-(ptrAlign           : Alignment)
-(integerInfo        : AlignInfo)
-(vectorInfo         : AlignInfo)
-(floatInfo          : AlignInfo)
+  (intLayout          : Endian)
+  (stackAlignment     : Alignment)
+  (aggregateAlignment : Alignment)
+  (ptrSize            : Nat) -- size in bytes
+  (ptrAlign           : Alignment)
+  (integerInfo        : AlignInfo)
+  (vectorInfo         : AlignInfo)
+  (floatInfo          : AlignInfo)
 
 def default_data_layout : DataLayout :=
   { intLayout := Endian.big

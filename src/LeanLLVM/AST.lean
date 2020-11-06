@@ -34,7 +34,7 @@ def lt : Ident → Ident → Prop
 | anon x,  anon y  => x < y
 | anon _,  named _ => False
 
-instance : HasLess Ident := ⟨Ident.lt⟩.
+instance : Less Ident := ⟨Ident.lt⟩
 
 instance decideEq : ∀(x y:Ident), Decidable (x = y)
 | named a, named b =>
@@ -116,7 +116,7 @@ inductive PrimType
 | metadata
 
 namespace PrimType
-instance : HasCoe FloatType PrimType := ⟨PrimType.floatType⟩
+instance : Coe FloatType PrimType := ⟨PrimType.floatType⟩
 end PrimType
 
 inductive LLVMType
@@ -129,7 +129,8 @@ inductive LLVMType
 | vector (n:Nat) (elt:LLVMType)
 
 namespace LLVMType
-instance : HasCoe PrimType LLVMType := ⟨LLVMType.prim⟩
+instance : Coe PrimType LLVMType := ⟨LLVMType.prim⟩
+instance : Inhabited LLVMType := ⟨LLVMType.prim PrimType.void⟩
 end LLVMType
 
 -- Top-level Type Aliases ------------------------------------------------------
@@ -147,10 +148,10 @@ structure TypeDecl :=
 structure Symbol := (symbol : String)
 
 @[reducible]
-instance symbolHasLess : HasLess Symbol := ⟨ λ(x y:Symbol) => x.symbol < y.symbol ⟩.
+instance symbolHasLess : Less Symbol := ⟨ λ(x y:Symbol) => x.symbol < y.symbol ⟩
 
 @[reducible]
-instance symbolLtDec (x y:Symbol) : Decidable (x < y) := String.decLt x.symbol y.symbol.
+instance symbolLtDec (x y:Symbol) : Decidable (x < y) := String.decLt x.symbol y.symbol
 
 structure BlockLabel := (label : Ident)
 
@@ -166,8 +167,8 @@ end BlockLabel
 
 
 structure Typed (a : Type) :=
-(type  : LLVMType)
-(value : a)
+  (type  : LLVMType)
+  (value : a)
 
 /-
 namespace llvm.typed
@@ -254,16 +255,17 @@ inductive FCmpOp
 -- Values ----------------------------------------------------------------------
 
 
-inductive clause
-| catch
-| filter
+inductive Clause : Type
+| catchExc
+| filterExc
 
 def Float := UInt32
 
 def Double := UInt64
 
-mutual inductive Value, ConstExpr, ValMD, DebugLoc
-with Value : Type
+mutual -- Value ConstExpr, ValMD, and DebugLoc are mutually dependent
+
+inductive Value : Type
      | integer : Int -> Value
      | bool : Bool -> Value
 --     | float : Float -> Value
@@ -283,7 +285,7 @@ with Value : Type
      | md : ValMD -> Value
      | asm : Bool -> Bool -> String -> String -> Value -- hasSideEffects isAlignStack asmString constraintString
 
-with ConstExpr : Type
+inductive ConstExpr : Type
      | select : Typed Value -> Typed Value -> Typed Value -> ConstExpr
      | gep : Bool -> Option Nat -> LLVMType -> Array (Typed Value) -> ConstExpr
      | conv : ConvOp -> Typed Value -> LLVMType -> ConstExpr
@@ -293,18 +295,29 @@ with ConstExpr : Type
      | bit : BitOp -> Typed Value -> Value -> ConstExpr
      | blockAddr : Symbol -> BlockLabel -> ConstExpr
 
-with ValMD : Type
+inductive ValMD : Type
      | string (s:String) : ValMD
      | value (val:Typed Value) : ValMD
      | ref (r:Nat) : ValMD
      | node (l:List (Option ValMD)) : ValMD
      | loc (l:DebugLoc) : ValMD
      | debugInfo  : ValMD -- FIXME , just a placeholder for now
-with DebugLoc : Type
+
+inductive DebugLoc : Type
      | debugLoc (line : Nat) (col : Nat) (scope : ValMD) (IA : Option ValMD) : DebugLoc
 
-instance symbolIsValue    : HasCoe Symbol Value := ⟨Value.symbol⟩
-instance constExprIsValue : HasCoe ConstExpr Value := ⟨Value.constExpr⟩
+end
+
+namespace Value
+
+instance : Inhabited Value := ⟨Value.integer 0⟩
+
+end Value
+
+instance symbolIsValue    : Coe Symbol Value :=
+  ⟨Value.symbol⟩
+instance constExprIsValue : Coe ConstExpr Value :=
+  ⟨Value.constExpr⟩
 
 inductive Instruction : Type
 | ret (val:Typed Value)
@@ -342,7 +355,7 @@ inductive Instruction : Type
 | va_arg (argl:Typed Value) (tp:LLVMType)
 | indirectbr (addr:Typed Value) (allowed:List BlockLabel)
 | switch (idx:Typed Value) (default:BlockLabel) (cases:List (Nat × BlockLabel))
-| landingpad (res:LLVMType) (y:Option (Typed Value)) (x:Bool) (clauses:List (clause × Typed Value))
+| landingpad (res:LLVMType) (y:Option (Typed Value)) (x:Bool) (clauses:List (Clause × Typed Value))
 | resume (exn:Typed Value)
 
 -- Named Metadata --------------------------------------------------------------

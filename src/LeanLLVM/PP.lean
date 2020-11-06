@@ -8,7 +8,7 @@ open Std (RBMap)
 
 namespace LLVM
 
-structure Doc : Type := (compose : String → String).
+structure Doc : Type := (compose : String → String)
 
 class HasPP (α:Type _) := (pp : α → Doc)
 
@@ -16,30 +16,29 @@ export HasPP (pp)
 
 namespace Doc
 
-reserve infixl ` <+> `: 50
-reserve infixl ` $+$ `: 60
+--reserve infixl ` <+> `: 50
+--reserve infixl ` $+$ `: 60
 
-def text (x:String) := Doc.mk (fun z => x ++ z).
-def render (x:Doc) : String := x.compose "".
-def toDoc {a:Type} [HasToString a] : a → Doc := text ∘ toString.
+def text (x:String) := Doc.mk (fun z => x ++ z)
+def render (x:Doc) : String := x.compose ""
+def toDoc {a:Type} [ToString a] : a → Doc := text ∘ toString
 
-def empty : Doc := Doc.mk id.
-def next_to (x y : Doc) : Doc := Doc.mk (x.compose ∘ y.compose).
+def empty : Doc := Doc.mk id
+def next_to (x y : Doc) : Doc := Doc.mk (x.compose ∘ y.compose)
 
-reserve infixl ` <> `: 50
-infix <>  := next_to.
+infixl:50 " <> " => next_to
 
 instance : Inhabited Doc := ⟨empty⟩
 
 def spacesep (x y:Doc) : Doc  := x <> text " " <> y
 def linesep (x y:Doc)  : Doc  := x <> text "\n" <> y
 
-infix <+> := spacesep
-infix $+$ := linesep
+infixl:50 " <+> " => spacesep
+infixl:60 " $+$ " => linesep
 
-def hcat (xs:List Doc) : Doc := List.foldr next_to empty xs.
-def hsep (xs:List Doc) : Doc := List.foldr spacesep empty xs.
-def vcat (xs:List Doc) : Doc := List.foldr linesep empty xs.
+def hcat (xs:List Doc) : Doc := List.foldr next_to empty xs
+def hsep (xs:List Doc) : Doc := List.foldr spacesep empty xs
+def vcat (xs:List Doc) : Doc := List.foldr linesep empty xs
 
 def punctuate (p:Doc) : List Doc → List Doc
 | [ ]     => []
@@ -127,7 +126,7 @@ end LayoutSpec
 section LayoutSpec
 open LayoutSpec
 
-def pp_layout (xs:List LayoutSpec) : Doc := hcat (punctuate (text "-") (pp <$> xs))
+def pp_layout (xs:List LayoutSpec) : Doc := hcat (punctuate (text "-") (xs.map pp))
 
 def l1 : List LayoutSpec :=
   [ endianness Endian.big,
@@ -219,10 +218,10 @@ partial def ppDoc : LLVMType → Doc
 | prim pt       => pp pt
 | alias nm            => text "%" <> text nm
 | array len ty        => brackets (int len <+> text "x" <+> ppDoc ty)
-| funType ret args va => ppDoc ret <> pp_arg_list va (ppDoc <$> args.toList)
+| funType ret args va => ppDoc ret <> pp_arg_list va (args.toList.map ppDoc)
 | ptr ty              => ppDoc ty <> text "*"
-| struct false ts     => braces (commas (ppDoc <$> ts.toList))
-| struct true  ts     => packed_braces (commas (ppDoc <$> ts.toList))
+| struct false ts     => braces (commas (ts.toList.map ppDoc))
+| struct true  ts     => packed_braces (commas (ts.toList.map ppDoc))
 | vector len ty       => angles (int len <+> text "x" <+> ppDoc ty)
 
 instance : HasPP LLVMType := ⟨ppDoc⟩
@@ -401,8 +400,8 @@ partial def pp_md (pp_value : Value → Doc) : ValMD → Doc
 | value x   => x.pp_with pp_value
 | ref i     => text "!" <> int i
 | node xs   =>
-  text "!" <> braces (commas (xs.map (λ mx => Option.casesOn mx (text "null") pp_md)))
-| loc l    => pp_debug_loc pp_md l
+  text "!" <> braces (commas (xs.map (λ mx => (mx.map (pp_md pp_value)).getD (text "null"))))
+| loc l    => pp_debug_loc (pp_md pp_value) l
 | debugInfo => empty
 
 open Value
@@ -413,7 +412,7 @@ partial def pp_value : Value → Doc
 | zeroInit         => text "0"
 | integer i        => toDoc i
 | Value.bool b     => toDoc b
-| string s         => text "c" <> pp_string_literal s
+| Value.string s   => text "c" <> pp_string_literal s
 | ident n          => pp n
 | symbol n         => pp n
 | constExpr e      => pp_const_expr pp_value e
@@ -490,15 +489,15 @@ def pp_typed_label (l:BlockLabel) : Doc := text "label" <+> pp l
 
 def pp_invoke (ty:LLVMType) (f:Value) (args:List (Typed Value)) (to:BlockLabel) (uw:BlockLabel) : Doc :=
   text "invoke" <+> pp ty <+> pp f <>
-  parens (commas (pp <$> args)) <+>
+  parens (commas (args.map pp)) <+>
   text "to label" <+> pp to <+>
   text "unwind label" <+> pp uw
 
-def pp_clause : (clause × Typed Value)→ Doc
-| (clause.catch, v)  => text "catch"  <+> pp v
-| (clause.filter, v) => text "filter" <+> pp v
+def pp_clause : (Clause × Typed Value)→ Doc
+| (Clause.catchExc, v)  => text "catch"  <+> pp v
+| (Clause.filterExc, v) => text "filter" <+> pp v
 
-def pp_clauses (is_cleanup:Bool) (cs:List (clause × Typed Value) ): Doc :=
+def pp_clauses (is_cleanup:Bool) (cs:List (Clause × Typed Value) ): Doc :=
   hsep ((if is_cleanup then [text "cleanup"] else []) ++ cs.map pp_clause)
 
 def pp_switch_entry (ty:LLVMType) : (Nat × BlockLabel) → Doc
@@ -546,11 +545,11 @@ def ppDoc : Instruction → Doc
 | unwind => text "unwind"
 | va_arg v tp => text "va_arg" <+> pp v <> comma <+> pp tp
 | indirectbr d ls =>
-    text "indirectbr" <+> pp d <> comma <+> commas (pp_typed_label <$> ls)
+    text "indirectbr" <+> pp d <> comma <+> commas (ls.map pp_typed_label)
 | switch c d ls =>
     text "switch" <+> pp c <> comma <+>
     pp_typed_label d <+>
-    brackets (hcat (pp_switch_entry c.type <$> ls))
+    brackets (hcat (ls.map (pp_switch_entry c.type)))
 | landingpad ty mfn c cs =>
     text "landingpad" <+> pp ty <>
     pp_opt (λv => text " personality" <+> pp v) mfn <+>
@@ -576,7 +575,7 @@ end Stmt
 
 namespace BasicBlock
 
-def ppDoc (bb:BasicBlock) := vcat ([ pp bb.label <> text ":" ] ++ pp <$> bb.stmts.toList)
+def ppDoc (bb:BasicBlock) := vcat ([ pp bb.label <> text ":" ] ++ bb.stmts.toList.map pp)
 
 instance : HasPP BasicBlock := ⟨ppDoc⟩
 
@@ -627,8 +626,8 @@ def ppDoc (d:Declare) : Doc :=
   text "declare" <+>
   pp d.retType <+>
   pp d.name <>
-  pp_arg_list d.varArgs (pp <$> d.args.toList) <+>
-  hsep (pp <$> d.attrs.toList) <>
+  pp_arg_list d.varArgs (d.args.toList.map pp) <+>
+  hsep (d.attrs.toList.map pp) <>
   pp_opt (λnm => text " " <> pp_comdat_name nm) d.comdat
 
 instance : HasPP Declare := ⟨ppDoc⟩
@@ -741,8 +740,8 @@ def ppDoc (d:Define) : Doc :=
   pp_opt pp d.linkage <+>
   pp d.retType <+>
   pp d.name <>
-  pp_arg_list d.varArgs (pp <$> d.args.toList) <+>
-  hsep (pp <$> d.attrs.toList) <>
+  pp_arg_list d.varArgs (d.args.toList.map pp) <+>
+  hsep (d.attrs.toList.map pp) <>
   pp_opt (λs => text " section" <+> pp_string_literal s) d.sec <>
   pp_opt (λg => text " gc" <+> pp g) d.gc <+>
   -- pp_mds d.metadata <+>
@@ -758,11 +757,11 @@ def ppDoc (m:Module) : Doc :=
   pp_opt (λnm => text "source_filename = " <> pp_string_literal nm) m.sourceName $+$
   text "target datalayout = " <> dquotes (pp_layout m.dataLayout) $+$
   vcat (List.join
-  [ pp <$> m.types.toList
-  , pp <$> m.globals.toList
-  , pp <$> m.aliases.toList
-  , pp <$> m.declares.toList
-  , pp <$> m.defines.toList
+  [ m.types.toList.map pp
+  , m.globals.toList.map pp
+  , m.aliases.toList.map pp
+  , m.declares.toList.map pp
+  , m.defines.toList.map pp
   -- , list.map pp_named_md m.named_md
   -- , list.map pp_unnamed_md m.unnamed_md
   -- , list.map pp_comdat m.comdat

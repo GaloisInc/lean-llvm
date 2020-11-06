@@ -12,21 +12,24 @@ import LeanLLVM.LLVMCodes
 namespace LLVM
 namespace FFI
 
-constant Context := Unit
-constant Type_ := Unit
+constant Context : Type := Unit
+def Type_ : Type := Unit
 
-constant Value := Unit
-def Function := Value
-def BasicBlock := Value
-def Instruction := Value
-def Constant := Value
-def GlobalVar := Value
-def InlineAsm := Value
+instance Type_.inhabited : Inhabited Type_ := inferInstanceAs (Inhabited Unit)
 
-constant Module := Unit
-constant MemoryBuffer := Unit
 
-def Triple := Unit
+constant Value : Type := Unit
+def Function : Type  := Value
+def BasicBlock : Type  := Value
+def Instruction : Type  := Value
+def Constant : Type  := Value
+def GlobalVar : Type := Value
+def InlineAsm : Type := Value
+
+constant Module : Type := Unit
+constant MemoryBuffer : Type := Unit
+
+def Triple : Type := Unit
 instance Triple.inhabited : Inhabited Triple := inferInstanceAs (Inhabited Unit)
 
 ------------------------------------------------------------------------
