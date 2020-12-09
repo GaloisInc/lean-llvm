@@ -84,7 +84,7 @@ partial def store (dl:DataLayout) : mem_type → bitvec 64 → Sim.Value → Sim
     throw (IO.userError ("Integer width mismatch in store: " ++ toString w ++ " " ++ toString w'))
 
 | mem_type.struct si, p, Sim.Value.struct fs => do
-  let i := 0
+  let mut i := 0
   for f in si.fields do
     match fs.get? i with
     | some fv =>
@@ -96,9 +96,10 @@ partial def store (dl:DataLayout) : mem_type → bitvec 64 → Sim.Value → Sim
   let (sz,a) := mem_type.szAndAlign dl mt;
   let sz' := bitvec.of_nat 64 (padToAlignment sz a);
   if vs.size = n then do
+    let mut p' := p;
     for v in vs do
-      store dl mt p v
-      p := p.add sz'
+      store dl mt p' v
+      p' := p'.add sz'
   else
     throw (IO.userError
            ("Expected vector value with " ++ toString n ++ " elements, but got " ++ toString vs.size))
@@ -107,9 +108,10 @@ partial def store (dl:DataLayout) : mem_type → bitvec 64 → Sim.Value → Sim
   let (sz,a) := mem_type.szAndAlign dl mt;
   let sz' := bitvec.of_nat 64 (padToAlignment sz a);
   if vs.size = n then do
+    let mut p' := p;
     for v in vs do
-      store dl mt p v
-      p := p.add sz'
+      store dl mt p' v
+      p' := p'.add sz'
    else
     throw (IO.userError
            ("Expected array value with " ++ toString n ++ " elements, but got " ++ toString vs.size))
@@ -151,7 +153,7 @@ def runInitializers (mod:Module) (dl:DataLayout) (ls:List (Symbol × bitvec 64))
     , ktrace := λ _ a => a
     }
     (λ _u _frm st => pure st)
-    (arbitrary _)
+    arbitrary
     (initializeState mod dl ls)
 
 end LLVM

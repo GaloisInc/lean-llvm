@@ -34,7 +34,7 @@ def lt : Ident → Ident → Prop
 | anon x,  anon y  => x < y
 | anon _,  named _ => False
 
-instance : Less Ident := ⟨Ident.lt⟩
+instance : HasLess Ident := ⟨Ident.lt⟩
 
 instance decideEq : ∀(x y:Ident), Decidable (x = y)
 | named a, named b =>
@@ -148,7 +148,7 @@ structure TypeDecl :=
 structure Symbol := (symbol : String)
 
 @[reducible]
-instance symbolHasLess : Less Symbol := ⟨ λ(x y:Symbol) => x.symbol < y.symbol ⟩
+instance symbolHasLess : HasLess Symbol := ⟨ λ(x y:Symbol) => x.symbol < y.symbol ⟩
 
 @[reducible]
 instance symbolLtDec (x y:Symbol) : Decidable (x < y) := String.decLt x.symbol y.symbol

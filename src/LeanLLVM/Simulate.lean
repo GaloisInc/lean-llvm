@@ -332,7 +332,7 @@ partial def execFunc {z} (zinh:z) (kerr:IO.Error → z) (ktrace : trace_event �
     , ktrace := ktrace
     }
     (λ_ _ _ => kerr (IO.userError "unterminated basic block!"))
-    (arbitrary _)
+    arbitrary
     st
 
 def runFunc : Symbol → List Sim.Value → State → Sum IO.Error (Option Sim.Value × State) :=

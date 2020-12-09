@@ -59,7 +59,7 @@ instance monadExcept : MonadExcept IO.Error extract :=
   , tryCatch := λm handle r => tryCatch (m r) (λerr => handle err r)
   }
 
-instance mIO : MonadIO extract := { liftIO := λ m r => m }
+instance mIO : MonadLiftT IO extract := { monadLift := λ m r => m }
 
 def run {a:Type} (m:extract a) : IO (aliasMap × a) := do
   let r <- IO.mkRef (Std.RBMap.empty, Std.RBMap.empty);
@@ -106,7 +106,7 @@ def typeIsVoid (tp : FFI.Type_) : IO Bool := do
 def throwError {α} (msg:String): extract α := throw (IO.userError msg)
 
 partial def extractType (tp : FFI.Type_) : extract LLVMType := do
-  let id <- liftIO $ FFI.getTypeTag tp;
+  let id <- FFI.getTypeTag tp;
   match id with
   | TypeID.void      => pure $ PrimType.void
   | TypeID.half      => pure $ FloatType.half
@@ -120,9 +120,9 @@ partial def extractType (tp : FFI.Type_) : extract LLVMType := do
   | TypeID.x86mmx    => pure $ PrimType.x86mmx
   | TypeID.token     => pure $ PrimType.token
   | TypeID.integer   =>
-    liftIO $ (λn => PrimType.integer n) <$> FFI.getIntegerTypeWidth tp
+    (λn => PrimType.integer n) <$> FFI.getIntegerTypeWidth tp
   | TypeID.function => do
-    let dt <- liftIO (FFI.getFunctionTypeData tp);
+    let dt <- (FFI.getFunctionTypeData tp);
     match dt with
     | some (ret, args, varargs) => do
        let ret' <- extractType ret;
@@ -130,18 +130,18 @@ partial def extractType (tp : FFI.Type_) : extract LLVMType := do
        pure $ LLVMType.funType ret' args' varargs
     | none => throwError "expected function type!"
   | TypeID.struct => do
-     let tn <- liftIO $ FFI.getTypeName tp;
+     let tn <- FFI.getTypeName tp;
      match tn with
      | some nm => do
        -- named struct type, check if we need to traverse the type definition
        -- only recurse into the definition if this is the first time
        -- we've encountered this named type
        unless (← extract.visit nm) do
-         let opq <- liftIO $ FFI.typeIsOpaque tp;
+         let opq <- FFI.typeIsOpaque tp;
          match opq with
          | true => extract.define nm TypeDeclBody.opaque
          | false => do
-           let dt <- liftIO $ FFI.getStructTypeData tp;
+           let dt <- FFI.getStructTypeData tp;
            match dt with
            | some (packed, tps) => do
              let tps' <- Array.mapM extractType tps;
@@ -150,22 +150,22 @@ partial def extractType (tp : FFI.Type_) : extract LLVMType := do
        pure $ LLVMType.alias nm
      -- literal struct type, recurse into it's definition
      | none => do
-       let dt <- liftIO $ FFI.getStructTypeData tp;
+       let dt <- FFI.getStructTypeData tp;
        match dt with
        | some (packed, tps)  => LLVMType.struct packed <$> Array.mapM extractType tps
        | none => throwError "expected struct type!"
   | TypeID.array => do
-    let dt <- liftIO (FFI.getSequentialTypeData tp);
+    let dt <- (FFI.getSequentialTypeData tp);
     match dt with
     | some (n, el) => LLVMType.array n <$> extractType el
     | none => throwError "expected array type!"
   | TypeID.pointer => do
-    let eltp <- liftIO (FFI.getPointerElementType tp);
+    let eltp <- (FFI.getPointerElementType tp);
     match eltp with
     | none => throwError "expected pointer type!"
     | some x => LLVMType.ptr <$> extractType x
   | TypeID.vector => do
-     let dt <- liftIO (FFI.getSequentialTypeData tp);
+     let dt <- (FFI.getSequentialTypeData tp);
      match dt with
      | some (n, el) => LLVMType.vector n <$> extractType el
      | none => throwError "expected vector type!"
@@ -190,9 +190,9 @@ def ValueContext.empty : ValueContext :=
   }
 
 def extractArgs (fn : FFI.Function) : extract (Nat × Array (Typed Ident)) := do
-  let rawargs ← liftIO (FFI.getFunctionArgs fn)
-  let counter : Nat := 0
-  let args : Array (Typed Ident) := Array.empty
+  let rawargs ← (FFI.getFunctionArgs fn)
+  let mut counter : Nat := 0
+  let mut args : Array (Typed Ident) := Array.empty
   for (mnm, rawtp) in rawargs do
     let tp ← extractType rawtp
     match mnm with
@@ -205,7 +205,7 @@ def extractArgs (fn : FFI.Function) : extract (Nat × Array (Typed Ident)) := do
   pure (counter, args)
 
 def extractBBLabel (bb:FFI.BasicBlock) (c:Nat) : extract (Nat × BlockLabel) := do
-  let nm <- liftIO (FFI.getBBName bb);
+  let nm <- (FFI.getBBName bb);
   match nm with
   | none    => pure (c+1, ⟨Ident.anon c⟩)
   | some nm => pure (c  , ⟨Ident.named nm⟩)
@@ -221,28 +221,28 @@ def computeInstructionNumbering
   (c0:Nat)
   (imap0:InstrMap)
   : extract (Nat × InstrMap) := do
-  let instrarr <- liftIO (FFI.getInstructionArray rawbb);
-  let c := c0
-  let imap := imap0
+  let instrarr <- (FFI.getInstructionArray rawbb);
+  let mut c := c0
+  let mut imap := imap0
   for rawi in instrarr do
-    let tp ← liftIO (FFI.getInstructionType rawi)
-    let isv ← liftIO (typeIsVoid tp)
+    let tp ← (FFI.getInstructionType rawi)
+    let isv ← (typeIsVoid tp)
     unless isv do
-      let mnm ← liftIO (FFI.getInstructionName rawi)
+      let mnm ← (FFI.getInstructionName rawi)
       match mnm with
       | some nm => 
         imap := Std.RBMap.insert imap rawi (Ident.named nm)
       | none    =>
-        let c := c+1
-        let imap := Std.RBMap.insert imap rawi (Ident.anon c)
+        c := c+1
+        imap := Std.RBMap.insert imap rawi (Ident.anon c)
   pure (c, imap)
 
 
 def computeNumberings (c0:Nat) (fn:FFI.Function) : extract (BBMap × InstrMap) := do
-   let bbarr ← liftIO (FFI.getBasicBlockArray fn)
-   let c := c0
-   let bmap := BBMap.empty
-   let imap : InstrMap := Std.RBMap.empty
+   let bbarr ← (FFI.getBasicBlockArray fn)
+   let mut c := c0
+   let mut bmap := BBMap.empty
+   let mut imap : InstrMap := Std.RBMap.empty
    for rawbb in bbarr do
      let (c', blab) ← extractBBLabel rawbb c
      bmap := Std.RBMap.insert bmap rawbb blab
@@ -251,30 +251,30 @@ def computeNumberings (c0:Nat) (fn:FFI.Function) : extract (BBMap × InstrMap) :
 
 partial def extractConstant (rawc : FFI.Constant) : extract Value := do
   let extractTypedConstant (c:FFI.Constant) : extract (Typed Value) := do
-    let tp ← liftIO (FFI.getValueType c) >>= extractType
+    let tp ← (FFI.getValueType c) >>= extractType
     let x  ← extractConstant c
     pure ⟨tp, x⟩
-  let tag ← liftIO (FFI.getConstantTag rawc)
+  let tag ← (FFI.getConstantTag rawc)
   match tag with
   | Code.Const.ConstantInt => do
-    let d ← liftIO (FFI.getConstIntData rawc)
+    let d ← (FFI.getConstIntData rawc)
     match d with
     | some (_w, v) => pure (Value.integer (Int.ofNat v))
     | none => throwError "expected constant integer value"
   | Code.Const.Function => do
-    let nm ← liftIO (FFI.getConstantName rawc)
+    let nm ← (FFI.getConstantName rawc)
     match nm with
     | some s => pure (Symbol.mk s)
     | none   => throwError "expected function value"
   | Code.Const.GlobalVariable => do
-    let nm ← liftIO (FFI.getConstantName rawc)
+    let nm ← (FFI.getConstantName rawc)
     match nm with
     | some s => pure (Symbol.mk s)
     | none   => throwError "expected global variable"
   | Code.Const.ConstantPointerNull =>
     pure Value.null
   | Code.Const.ConstantDataArray => do
-    let md ← liftIO $ FFI.getConstArrayData rawc
+    let md ← FFI.getConstArrayData rawc
     match md with
     | none => throwError "expected constant array"
     | some (elty, cs) => do
@@ -282,7 +282,7 @@ partial def extractConstant (rawc : FFI.Constant) : extract Value := do
       let cs' ← cs.mapM extractConstant
       pure (Value.array elty' cs')
   | Code.Const.ConstantExpr => do
-    let md ← liftIO (FFI.getConstExprData rawc)
+    let md ← (FFI.getConstExprData rawc)
     match md with
     | none => throwError "expected constant expression"
     | some (op, xs) =>
@@ -296,7 +296,7 @@ partial def extractConstant (rawc : FFI.Constant) : extract Value := do
    | _ => throwError $ "unknown constant value: " ++ tag.asString
 
 def extractValue (ctx:ValueContext) (rawv:FFI.Value) : extract Value := do
-  let decmp ← liftIO $ FFI.decomposeValue rawv
+  let decmp ← FFI.decomposeValue rawv
   match decmp with
   | FFI.ValueView.constantView c => extractConstant c
   | FFI.ValueView.argument n =>
@@ -311,7 +311,7 @@ def extractValue (ctx:ValueContext) (rawv:FFI.Value) : extract Value := do
     throwError "unimplemented: basic block value"
   | FFI.ValueView.inlineasm i => do
     let (hasSideEffects, (isAlignStack, (asmString, constraintString))) ←
-      liftIO (FFI.getInlineAsmData i)
+      (FFI.getInlineAsmData i)
     pure (Value.asm hasSideEffects isAlignStack asmString constraintString)
   
   | FFI.ValueView.unknown => throwError "unknown value"
@@ -322,14 +322,14 @@ def extractBlockLabel (ctx:ValueContext) (bb:FFI.BasicBlock) : extract BlockLabe
   | some lab => pure lab
 
 def extractTypedValue (ctx:ValueContext) (rawv:FFI.Value) : extract (Typed Value) := do
-   let tp ← liftIO (FFI.getValueType rawv) >>= extractType;
+   let tp ← (FFI.getValueType rawv) >>= extractType;
    let v  ← extractValue ctx rawv;
    pure ⟨tp, v⟩
 
 def extractBinaryOp (rawInstr:FFI.Instruction)
                     (ctx:ValueContext)
                     (f:Typed Value → Value → Instruction) : extract Instruction := do
-  let x ← liftIO (FFI.getBinaryOperatorValues rawInstr)
+  let x ← (FFI.getBinaryOperatorValues rawInstr)
   match x with
   | none => throwError "expected binary operation"
   | some (o1,o2) => do
@@ -340,12 +340,12 @@ def extractBinaryOp (rawInstr:FFI.Instruction)
 def extractCastOp (rawinstr:FFI.Instruction)
                   (ctx:ValueContext)
                   (f:Typed Value → LLVMType → Instruction) : extract Instruction := do
-  let x ← liftIO $ FFI.getCastInstData rawinstr
+  let x ← FFI.getCastInstData rawinstr
   match x with
   | none => throwError "expected conversion instruction"
   | some (_op, v) => do
     let tv ← extractTypedValue ctx v
-    let outty ← liftIO (FFI.getInstructionType rawinstr) >>= extractType
+    let outty ← (FFI.getInstructionType rawinstr) >>= extractType
     pure (f tv outty)
 
 def extractICmpOp (n:Code.ICmp) : ICmpOp :=
@@ -362,19 +362,19 @@ def extractICmpOp (n:Code.ICmp) : ICmpOp :=
   | Code.ICmp.sle => ICmpOp.isle
 
 def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract Instruction := do
-  let op ← liftIO (FFI.getInstructionOpcode rawinstr)
-  let tp ← liftIO (FFI.getInstructionType rawinstr) >>= extractType
+  let op ← (FFI.getInstructionOpcode rawinstr)
+  let tp ← (FFI.getInstructionType rawinstr) >>= extractType
   match op with
   -- == terminators ==
   -- return
   | Code.Instr.Ret => do
-    let mv ← liftIO $ FFI.getInstructionReturnValue rawinstr
+    let mv ← FFI.getInstructionReturnValue rawinstr
     match mv with
     | none => pure Instruction.retVoid
     | some v => Instruction.ret <$> extractTypedValue ctx v
   -- br
   | Code.Instr.Br => do
-    let d ← liftIO $ FFI.getBranchInstData rawinstr
+    let d ← FFI.getBranchInstData rawinstr
     match d with
     | none => throwError "expected branch instruction"
     | some (FFI.BranchView.unconditional b) =>
@@ -391,34 +391,34 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
     -- == binary operators ==
     -- add
   | Code.Instr.Add => do
-    let uov ← liftIO (FFI.hasNoUnsignedWrap rawinstr)
-    let sov ← liftIO (FFI.hasNoSignedWrap rawinstr)
+    let uov ← (FFI.hasNoUnsignedWrap rawinstr)
+    let sov ← (FFI.hasNoSignedWrap rawinstr)
     extractBinaryOp rawinstr ctx (Instruction.arith (ArithOp.add uov sov))
     -- fadd
   | Code.Instr.FAdd =>
     extractBinaryOp rawinstr ctx (Instruction.arith ArithOp.fadd)
     -- sub
   | Code.Instr.Sub => do
-    let uov ← liftIO (FFI.hasNoUnsignedWrap rawinstr)
-    let sov ← liftIO (FFI.hasNoSignedWrap rawinstr)
+    let uov ← (FFI.hasNoUnsignedWrap rawinstr)
+    let sov ← (FFI.hasNoSignedWrap rawinstr)
     extractBinaryOp rawinstr ctx (Instruction.arith (ArithOp.sub uov sov))
   -- fsub
   | Code.Instr.FSub =>
     extractBinaryOp rawinstr ctx (Instruction.arith ArithOp.fsub)
   -- mul
   | Code.Instr.Mul => do
-    let uov ← liftIO (FFI.hasNoUnsignedWrap rawinstr)
-    let sov ← liftIO (FFI.hasNoSignedWrap rawinstr)
+    let uov ← (FFI.hasNoUnsignedWrap rawinstr)
+    let sov ← (FFI.hasNoSignedWrap rawinstr)
     extractBinaryOp rawinstr ctx (Instruction.arith (ArithOp.mul uov sov))
   -- fmul
   | Code.Instr.FMul => extractBinaryOp rawinstr ctx (Instruction.arith ArithOp.fmul)
   -- udiv
   | Code.Instr.UDiv => do
-    let ex ← liftIO (FFI.isExact rawinstr);
+    let ex ← (FFI.isExact rawinstr);
     extractBinaryOp rawinstr ctx (Instruction.arith (ArithOp.udiv ex))
   -- sdiv
   | Code.Instr.SDiv => do
-    let ex ← liftIO (FFI.isExact rawinstr);
+    let ex ← (FFI.isExact rawinstr);
     extractBinaryOp rawinstr ctx (Instruction.arith (ArithOp.sdiv ex))
   -- fdiv
   | Code.Instr.FDiv =>
@@ -434,16 +434,16 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
     extractBinaryOp rawinstr ctx (Instruction.arith ArithOp.frem)
   -- shl
   | Code.Instr.Shl => do
-    let uov ← liftIO (FFI.hasNoUnsignedWrap rawinstr)
-    let sov ← liftIO (FFI.hasNoSignedWrap rawinstr)
+    let uov ← (FFI.hasNoUnsignedWrap rawinstr)
+    let sov ← (FFI.hasNoSignedWrap rawinstr)
     extractBinaryOp rawinstr ctx (Instruction.bit (BitOp.shl uov sov))
   -- lshr
   | Code.Instr.LShr => do
-    let ex ← liftIO (FFI.isExact rawinstr);
+    let ex ← (FFI.isExact rawinstr);
     extractBinaryOp rawinstr ctx (Instruction.bit (BitOp.lshr ex))
   -- ashr
   | Code.Instr.AShr => do
-    let ex ← liftIO (FFI.isExact rawinstr)
+    let ex ← (FFI.isExact rawinstr)
     extractBinaryOp rawinstr ctx (Instruction.bit (BitOp.ashr ex))
   -- and
   | Code.Instr.And => extractBinaryOp rawinstr ctx (Instruction.bit BitOp.and)
@@ -453,7 +453,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
   | Code.Instr.Xor => extractBinaryOp rawinstr ctx (Instruction.bit BitOp.xor)
   -- alloca
   | Code.Instr.Alloca => do
-     let md ← liftIO (FFI.getAllocaData rawinstr)
+     let md ← (FFI.getAllocaData rawinstr)
      match md with
      | none => throwError "Expected alloca instruction"
      | some (tp, nelts, align) => do
@@ -462,7 +462,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
        pure (Instruction.alloca tp' nelts' align)
   -- load
   | Code.Instr.Load => do
-    let md ← liftIO (FFI.getLoadData rawinstr)
+    let md ← (FFI.getLoadData rawinstr)
     match md with
     | none => throwError "Expected load instruction"
     | some (ptr, align) => do
@@ -470,7 +470,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
       pure (Instruction.load ptr' none align) -- TODO atomic ordering
   -- store
   | Code.Instr.Store => do
-    let md ← liftIO (FFI.getStoreData rawinstr)
+    let md ← (FFI.getStoreData rawinstr)
     match md with
     | none => throwError "Expected store instruction"
     | some (val,ptr,align) => do
@@ -479,7 +479,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
       pure (Instruction.store val' ptr' align)
   -- GEP
    | Code.Instr.GetElementPtr => do
-     let md ← liftIO (FFI.getGEPData rawinstr)
+     let md ← (FFI.getGEPData rawinstr)
      match md with
      | none => throwError "Expected GEP instruction"
      | some (inbounds,base,idxes) => do
@@ -512,7 +512,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
    | Code.Instr.BitCast => extractCastOp rawinstr ctx (Instruction.conv ConvOp.bit_cast)
    -- icmp
    | Code.Instr.ICmp => do
-     let d ← liftIO (FFI.getICmpInstData rawinstr)
+     let d ← (FFI.getICmpInstData rawinstr)
      match d with
      | none => throwError "expected icmp instruction"
      | some (code, (v1, v2)) => do
@@ -523,8 +523,8 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
 
    -- PHI
    | Code.Instr.PHI => do
-     let t ← liftIO (FFI.getInstructionType rawinstr) >>= extractType
-     let d ← liftIO (FFI.getPhiData rawinstr)
+     let t ← (FFI.getInstructionType rawinstr) >>= extractType
+     let d ← (FFI.getPhiData rawinstr)
      match d with
      | none => throwError "expected phi instruction"
      | some vs => do
@@ -533,7 +533,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
        pure (Instruction.phi t vs')
    -- call
    | Code.Instr.Call => do
-     let d ← liftIO (FFI.getCallInstData rawinstr)
+     let d ← (FFI.getCallInstData rawinstr)
      match d with
      | none => throwError "expected call instruction"
      | some (tail,retty,funv,args) => do
@@ -547,7 +547,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
 
    -- select
    | Code.Instr.Select => do
-     let d ← liftIO (FFI.getSelectInstData rawinstr)
+     let d ← (FFI.getSelectInstData rawinstr)
      match d with
      | none => throwError "expected select instruction"
      | some (vc, (vt,ve)) => do
@@ -558,7 +558,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
 
    -- extractvalue 
    | Code.Instr.ExtractValue => do
-     let d ← liftIO (FFI.getExtractValueInstData rawinstr)
+     let d ← (FFI.getExtractValueInstData rawinstr)
      match d with
      | none => throwError "expected extractvalue instruction"
      | some (vag, idxs) => do
@@ -567,7 +567,7 @@ def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract I
 
    -- insertvalue
    | Code.Instr.InsertValue => do
-     let d <- liftIO (FFI.getInsertValueInstData rawinstr)
+     let d <- (FFI.getInsertValueInstData rawinstr)
      match d with
      | none => throwError "expected extractvalue instruction"
      | some (vag, (vel, idxs)) => do
@@ -585,16 +585,16 @@ def extractStmt (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract Stmt := 
        }
 
 def extractStatements (bb:FFI.BasicBlock) (ctx:ValueContext) : extract (Array Stmt) := do
-  let rawinstrs ← liftIO (FFI.getInstructionArray bb)
-  let stmts := Array.empty
+  let rawinstrs ← (FFI.getInstructionArray bb)
+  let mut stmts := Array.empty
   for rawinstr in rawinstrs do
     let stmt <- extractStmt rawinstr ctx
     stmts := Array.push stmts stmt
   pure stmts
 
 def extractBasicBlocks (fn : FFI.Function) (ctx:ValueContext) : extract (Array BasicBlock) := do
-  let rawbbs <- liftIO (FFI.getBasicBlockArray fn)
-  let bs : Array BasicBlock := Array.empty
+  let rawbbs <- (FFI.getBasicBlockArray fn)
+  let mut bs : Array BasicBlock := Array.empty
   for rawbb in rawbbs do
     match Std.RBMap.find? ctx.bmap rawbb with
     | none => throwError "unknown basic block"
@@ -604,8 +604,8 @@ def extractBasicBlocks (fn : FFI.Function) (ctx:ValueContext) : extract (Array B
   pure bs
 
 def extractFunction (fn : FFI.Function) : extract Define := do
-  let nm ← liftIO (FFI.getFunctionName fn)
-  let ret ← liftIO (FFI.getReturnType fn) >>= extractType
+  let nm ← (FFI.getFunctionName fn)
+  let ret ← (FFI.getReturnType fn) >>= extractType
   let (counter, args) ← extractArgs fn
   let (bmap, imap) ← computeNumberings counter fn
   let ctx : ValueContext := { funArgs := args, imap := imap, bmap := bmap }
@@ -624,17 +624,17 @@ def extractFunction (fn : FFI.Function) : extract Define := do
        }
 
 def extractDataLayout (m:FFI.Module) : extract (List LayoutSpec) := do
-  let dlstr ← liftIO $ FFI.getModuleDataLayoutStr m
+  let dlstr ← FFI.getModuleDataLayoutStr m
   match parse.run parse.data_layout dlstr with
   | Sum.inl (stk, str') =>
     throwError $ "Could not parse data layout string: " ++ dlstr ++ "  " ++ stk.repr ++ "  " ++ str'
   | Sum.inr dl => pure dl
 
 def extractGlobal (g:FFI.GlobalVar) : extract Global := do
-  let tp ← liftIO (FFI.getValueType g) >>= extractType
+  let tp ← (FFI.getValueType g) >>= extractType
   match tp with
   | LLVMType.ptr valtp => do
-    let md ← liftIO (FFI.getGlobalVarData g)
+    let md ← (FFI.getGlobalVarData g)
     match md with
     | none => throwError "Expected global variable"
     | some (nm, val, align) => do
@@ -650,10 +650,10 @@ def extractGlobal (g:FFI.GlobalVar) : extract Global := do
   | _ => throwError ("Expected pointer type for global but got: " ++ (pp tp).render)
 
 def extractModule (m:FFI.Module) : extract Module := do
-  let nm ← liftIO (FFI.getModuleIdentifier m)
+  let nm ← (FFI.getModuleIdentifier m)
   let dl ← extractDataLayout m
-  let fns ← liftIO (FFI.getFunctionArray m) >>= Array.mapM extractFunction
-  let gs  ← liftIO (FFI.getGlobalArray m) >>= Array.mapM extractGlobal
+  let fns ← (FFI.getFunctionArray m) >>= Array.mapM extractFunction
+  let gs  ← (FFI.getGlobalArray m) >>= Array.mapM extractGlobal
   pure { sourceName := some nm
        , dataLayout := dl
        , types      := Array.empty  -- TODO

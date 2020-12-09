@@ -1,6 +1,6 @@
-import Init.Control.Alternative
-import Init.Control.Applicative
-import Init.Control.Monad
+-- import Init.Control.Alternative
+-- import Init.Control.Applicative
+-- import Init.Control.Monad
 
 import Init.Data.Char
 
@@ -34,7 +34,7 @@ instance monad : Monad parse :=
 
 instance alternative : Alternative parse :=
   { failure := parse.mk (λz kerr kfail k => kfail)
-  , orelse  := λ ma mb => parse.mk (λz kerr kfail k stk str =>
+  , orElse  := λ ma mb => parse.mk (λz kerr kfail k stk str =>
       ma.runParse z kerr (λ_ _ => mb.runParse z kerr kfail k stk str) k stk str)
   }
 

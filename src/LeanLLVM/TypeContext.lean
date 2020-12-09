@@ -1,6 +1,3 @@
-import Init.Control.Functor
-import Init.Control.Applicative
-import Init.Control.Monad
 import Init.Data.Array
 import Init.Data.List
 import Std.Data.RBMap
