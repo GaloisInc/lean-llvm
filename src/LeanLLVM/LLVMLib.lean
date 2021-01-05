@@ -627,7 +627,7 @@ def extractDataLayout (m:FFI.Module) : extract (List LayoutSpec) := do
   let dlstr ← FFI.getModuleDataLayoutStr m
   match parse.run parse.data_layout dlstr with
   | Sum.inl (stk, str') =>
-    throwError $ "Could not parse data layout string: " ++ dlstr ++ "  " ++ stk.repr ++ "  " ++ str'
+    throwError $ "Could not parse data layout string: " ++ dlstr ++ "  " ++ reprStr stk ++ "  " ++ str'
   | Sum.inr dl => pure dl
 
 def extractGlobal (g:FFI.GlobalVar) : extract Global := do
