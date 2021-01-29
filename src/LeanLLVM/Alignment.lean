@@ -5,7 +5,7 @@ open Std (RBMap)
 namespace Std
 namespace RBNode
 universes u v
-variables {α : Type u} {β : α → Type v}
+variable {α : Type u} {β : α → Type v}
 section
 
 variable (lt : α → α → Bool)
@@ -24,7 +24,7 @@ end Std
 namespace Std
 namespace RBMap
 universes u v
-variables {α : Type u} {β : Type v} {lt : α → α → Bool}
+variable {α : Type u} {β : Type v} {lt : α → α → Bool}
 
 /- (upperBound k) retrieves the kv pair of the smallest key larger than or equal to `k`,
    if it exists -/
