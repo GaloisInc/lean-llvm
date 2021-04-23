@@ -40,8 +40,8 @@ def storeBytes : bitvec 64 → List (bitvec 8) → Sim.memMap → Sim.memMap
 | p, b::bs, m => storeBytes (p.add (bitvec.of_nat 64 1)) bs (m.insert p b)
 
 def loadBytes : bitvec 64 → Nat → Sim.memMap → Option (List (bitvec 8))
-| _p, 0, _mem => pure []
-| p, Nat.succ n, mem => do
+| _p, 0, _mem => some []
+| p, Nat.succ n, mem => OptionM.run do
   let b ← mem.find? p
   let bs ← loadBytes (p.add (bitvec.of_nat 64 1)) n mem
   pure (b::bs)

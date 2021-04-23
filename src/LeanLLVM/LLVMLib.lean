@@ -210,11 +210,6 @@ def extractBBLabel (bb:FFI.BasicBlock) (c:Nat) : extract (Nat × BlockLabel) := 
   | none    => pure (c+1, ⟨Ident.anon c⟩)
   | some nm => pure (c  , ⟨Ident.named nm⟩)
 
-def foo (b:Bool) : IO Nat := do
-  when b $ (do
-   IO.println "Hello";
-   IO.println "World");
-  pure 1
 
 def computeInstructionNumbering
   (rawbb:FFI.BasicBlock)
