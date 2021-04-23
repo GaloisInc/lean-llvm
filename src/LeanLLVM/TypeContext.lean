@@ -126,10 +126,10 @@ partial def lift_sym_type (dl:DataLayout) (lift_mem_type : LLVMType → Option m
 | LLVMType.alias i => sym_type.ty_alias i
 
 | t@(LLVMType.funType ret args va) =>
-  let mt : Option fun_decl := (do
-       lift_mem_type ret >>= λret' =>
-         List.mapM lift_mem_type args.toList >>= λargs' =>
-         pure (fun_decl.fun_decl ret' args' va));
+  let mt : Option fun_decl := OptionM.run do
+       let ret' <- lift_mem_type ret
+       let args' <- List.mapM lift_mem_type args.toList
+       pure $ fun_decl.fun_decl ret' args' va
   match mt with
   | none => sym_type.unsupported t
   | some t' => sym_type.fun_type t'
@@ -147,21 +147,21 @@ partial def lift_sym_type (dl:DataLayout) (lift_mem_type : LLVMType → Option m
   | some m => sym_type.mem_type (mem_type.vector n m)
 
 | t@(LLVMType.struct false fs) =>
-  let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
+  let mt : OptionM (List mem_type) := List.mapM lift_mem_type fs.toList;
   match mt with
   | none => sym_type.unsupported t
-  | some t' => 
+  | some t' =>
     sym_type.mem_type $ mem_type.struct $ compute_struct_info dl t'
 
 | t@(LLVMType.struct true fs) =>
-  let mt : Option (List mem_type) := List.mapM lift_mem_type fs.toList;
+  let mt : OptionM (List mem_type) := List.mapM lift_mem_type fs.toList;
   match mt with
   | none => sym_type.unsupported t
-  | some t' => 
+  | some t' =>
     sym_type.mem_type $ mem_type.struct $ compute_packed_struct_info dl t'
 
 
-partial def lift_mem_type (dl:DataLayout) (tds:Array TypeDecl) : LLVMType → Option mem_type
+partial def lift_mem_type (dl:DataLayout) (tds:Array TypeDecl) : LLVMType → OptionM mem_type
 | LLVMType.prim pt =>
   match pt with
   | PrimType.integer n   => some (mem_type.int n)
@@ -189,7 +189,7 @@ partial def lift_mem_type (dl:DataLayout) (tds:Array TypeDecl) : LLVMType → Op
 
 def sym_type_to_mem_type (dl:DataLayout) (tds:Array TypeDecl) : sym_type -> Option mem_type
 | sym_type.mem_type mt => some mt
-| sym_type.ty_alias i  => do
+| sym_type.ty_alias i  => OptionM.run do
   let b ← lookup_td tds i
   match b with
   | TypeDeclBody.opaque => none
