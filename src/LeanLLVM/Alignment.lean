@@ -4,18 +4,20 @@ open Std (RBMap)
 
 namespace Std
 namespace RBNode
-universes u v
+universe u v
 variable {α : Type u} {β : α → Type v}
 section
 
-variable (lt : α → α → Bool)
+variable (cmp : α → α → Ordering)
 
 @[specialize] def upperBound : RBNode α β → α → Option (Sigma β) → Option (Sigma β)
 | leaf, x, ub             => ub
 | node _ a ky vy b, x, ub =>
-   if lt x ky then upperBound a x (some ⟨ky, vy⟩)
-   else if lt ky x then upperBound b x ub
-   else some ⟨ky, vy⟩
+   match cmp x ky with
+   | Ordering.lt => upperBound a x (some ⟨ky, vy⟩)
+   | Ordering.gt => upperBound b x ub
+   | Ordering.eq => some ⟨ky, vy⟩
+
 end
 
 end RBNode
@@ -23,13 +25,13 @@ end Std
 
 namespace Std
 namespace RBMap
-universes u v
-variable {α : Type u} {β : Type v} {lt : α → α → Bool}
+universe u v
+variable {α : Type u} {β : Type v} {cmp : α → α → Ordering}
 
 /- (upperBound k) retrieves the kv pair of the smallest key larger than or equal to `k`,
    if it exists -/
-@[inline] def upperBound : RBMap α β lt → α → Option (Sigma (fun (k : α) => β))
-| ⟨t, _⟩, x => t.upperBound lt x none
+@[inline] def upperBound : RBMap α β cmp → α → Option (Sigma (fun (k : α) => β))
+| ⟨t, _⟩, x => t.upperBound cmp x none
 
 end RBMap
 end Std
@@ -65,7 +67,7 @@ def toAlignment (x:Nat) : Option Alignment :=
   if 2^l = x then some ⟨l⟩ else none
 
 -- @padToAlignment x a@ returns the smallest value aligned with @a@ not less than @x@.
-def padToAlignment (x:Nat) (a:Alignment) := 
+def padToAlignment (x:Nat) (a:Alignment) :=
   let m : Nat := 2^a.exponent;
   (x + m - 1)/m * m
 
@@ -73,7 +75,7 @@ def padToAlignment (x:Nat) (a:Alignment) :=
 def padDownToAlignment (x:Nat) (a:Alignment) : Nat :=
   let m : Nat := 2^a.exponent; x/m * m
 
-def AlignInfo := RBMap Nat Alignment (λx y => decide (x < y))
+def AlignInfo := RBMap Nat Alignment Ord.compare
 
 -- Get alignment for the integer type of the specified bitwidth,
 -- using LLVM's rules for integer types: "If no match is found, and

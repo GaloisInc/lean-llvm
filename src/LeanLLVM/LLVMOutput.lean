@@ -15,16 +15,16 @@ namespace LLVM
 namespace Output
 
 @[reducible]
-def SymMap := RBMap Symbol FFI.Value (λx y => decide (x < y))
+def SymMap := RBMap Symbol FFI.Value Ord.compare
 
 @[reducible]
-def BlockMap := RBMap BlockLabel FFI.Value (λx y => decide (x.label < y.label))
+def BlockMap := RBMap BlockLabel FFI.Value Ord.compare
 
 @[reducible]
-def ValueMap := RBMap Ident FFI.Value (λx y => decide (x < y))
+def ValueMap := RBMap Ident FFI.Value Ord.compare
 
 @[reducible]
-def TypeMap := RBMap String FFI.Type_ (λx y => decide (x < y))
+def TypeMap := RBMap String FFI.Type_ Ord.compare
 
 structure ValueContext :=
   (symbolMap : SymMap)
@@ -32,7 +32,7 @@ structure ValueContext :=
   (valueMap  : ValueMap)
   (typeMap   : TypeMap)
 
-def ValueContext.init : ValueContext := 
+def ValueContext.init : ValueContext :=
   { symbolMap := Std.RBMap.empty,
     blockMap  := Std.RBMap.empty,
     valueMap  := Std.RBMap.empty,

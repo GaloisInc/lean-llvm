@@ -13,7 +13,7 @@ open Std (RBMap)
 
 namespace Option
 
-universes u v
+universe u v
 
 def mapM {m:Type u → Type v} {α β:Type u} [Applicative m] (f:α → m β) : Option α → m (Option β)
 | none => pure none
@@ -40,10 +40,10 @@ end Ptr
 namespace LLVM
 
 @[reducible]
-def aliasMap := RBMap String TypeDeclBody (λx y => decide (x < y))
+def aliasMap := RBMap String TypeDeclBody Ord.compare
 
 @[reducible]
-def visitMap := RBMap String Unit (λx y => decide (x < y))
+def visitMap := RBMap String Unit Ord.compare
 
 def extract (a:Type) : Type := IO.Ref (aliasMap × visitMap) -> IO a
 
@@ -172,9 +172,9 @@ partial def extractType (tp : FFI.Type_) : extract LLVMType := do
 
 end
 
-def InstrMap := RBMap FFI.Instruction Ident FFI.instructionLt
+def InstrMap := RBMap FFI.Instruction Ident Ord.compare
 
-def BBMap := RBMap FFI.BasicBlock BlockLabel FFI.basicBlockLt
+def BBMap := RBMap FFI.BasicBlock BlockLabel Ord.compare
 
 def BBMap.empty : BBMap := Std.RBMap.empty
 

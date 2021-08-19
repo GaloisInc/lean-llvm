@@ -61,8 +61,8 @@ structure State :=
 (dl  : DataLayout)
 (heapAllocPtr : Nat)
 (stackPtr : Nat)
-(symmap : @RBMap Symbol (bitvec 64) (λx y => decide (x < y)))
-(revsymmap : @RBMap (bitvec 64) Symbol (λx y => decide (bitvec.ult x y)))
+(symmap : RBMap Symbol (bitvec 64) Ord.compare)
+(revsymmap : RBMap (bitvec 64) Symbol Ord.compare)
 
 structure SimConts (z:Type) :=
 (kerr : IO.Error → z) /- error continuation -/
