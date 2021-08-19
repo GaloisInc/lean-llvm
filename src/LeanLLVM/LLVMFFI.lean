@@ -182,6 +182,15 @@ def getExtractValueInstData : @& Instruction -> IO (Option (Value × Array Nat))
 @[extern 2 "lean_llvm_getInsertValueInstData"]
 def getInsertValueInstData : @& Instruction -> IO (Option (Value × (Value × Array Nat))) := arbitrary
 
+namespace Instruction
+
+instance : Ord Instruction where
+  compare x y := if instructionLt x y then Ordering.lt
+                 else if instructionLt y x then Ordering.gt
+                 else Ordering.eq
+
+end Instruction
+
 
 inductive BranchView
 | unconditional (b:BasicBlock)
@@ -222,6 +231,15 @@ def getBBName : @& BasicBlock -> IO (Option String) := arbitrary
 
 @[extern 2 "lean_llvm_getInstructionArray"]
 def getInstructionArray : @& BasicBlock -> IO (Array Instruction) := arbitrary
+
+namespace BasicBlock
+
+instance : Ord BasicBlock where
+  compare x y := if basicBlockLt x y then Ordering.lt
+                 else if basicBlockLt y x then Ordering.gt
+                 else Ordering.eq
+
+end BasicBlock
 
 ------------------------------------------------------------------------
 -- Function

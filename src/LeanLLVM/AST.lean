@@ -12,7 +12,7 @@ namespace LLVM
 -- def float : Type 0 := sorry
 -- def double : Type 0 := sorry
 
-def Strmap (a:Type) := RBMap String a (fun x y => decide (x < y))
+def Strmap (a:Type) := RBMap String a Ord.compare
 def Strmap.empty {a:Type} : Strmap a := Std.RBMap.empty
 
 -- Identifiers -----------------------------------------------------------------
@@ -34,7 +34,7 @@ def lt : Ident → Ident → Prop
 | anon x,  anon y  => x < y
 | anon _,  named _ => False
 
-instance : HasLess Ident := ⟨Ident.lt⟩
+instance : LT Ident := ⟨Ident.lt⟩
 
 instance decideEq : ∀(x y:Ident), Decidable (x = y)
 | named a, named b =>
@@ -59,6 +59,14 @@ instance decideLt : ∀(x y:Ident), Decidable (x < y)
   | Decidable.isFalse p => Decidable.isFalse p
 | named _, anon _  => Decidable.isTrue True.intro
 | anon _,  named _ => Decidable.isFalse False.elim
+
+instance : Ord Ident where
+  compare x y :=
+    match x, y with
+    | named x, named y => Ord.compare x y
+    | anon x, anon y => Ord.compare x y
+    | named _, anon _  => Ordering.lt
+    | anon _,  named _ => Ordering.gt
 
 end Ident
 
@@ -148,10 +156,13 @@ structure TypeDecl :=
 structure Symbol := (symbol : String)
 
 @[reducible]
-instance symbolHasLess : HasLess Symbol := ⟨ λ(x y:Symbol) => x.symbol < y.symbol ⟩
+instance symbolHasLess : LT Symbol := ⟨ λ(x y:Symbol) => x.symbol < y.symbol ⟩
 
 @[reducible]
 instance symbolLtDec (x y:Symbol) : Decidable (x < y) := String.decLt x.symbol y.symbol
+
+instance : Ord Symbol where
+  compare x y := Ord.compare x.symbol y.symbol
 
 structure BlockLabel := (label : Ident)
 
@@ -162,6 +173,9 @@ instance decideEq : ∀(x y : BlockLabel), Decidable (x = y)
   match Ident.decideEq a b with
   | Decidable.isTrue p  => Decidable.isTrue (congrArg _ p)
   | Decidable.isFalse p => Decidable.isFalse (λH => BlockLabel.noConfusion H p)
+
+instance : Ord BlockLabel where
+  compare x y := Ord.compare x.label y.label
 
 end BlockLabel
 

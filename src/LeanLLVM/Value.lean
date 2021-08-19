@@ -30,10 +30,10 @@ def asString (v:Value) : String := Doc.render (pretty v)
 end Value
 
 @[reducible]
-def memMap := @RBMap (bitvec 64) (bitvec 8) (λx y => decide (bitvec.ult x y))
+def memMap := RBMap (bitvec 64) (bitvec 8) Ord.compare
 
 @[reducible]
-def regMap := @RBMap Ident Value (λx y => decide (x < y))
+def regMap := RBMap Ident Value Ord.compare
 
 end Sim
 end LLVM
