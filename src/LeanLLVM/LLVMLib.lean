@@ -357,7 +357,11 @@ def extractICmpOp (n:Code.ICmp) : ICmpOp :=
   | Code.ICmp.sle => ICmpOp.isle
 
 def extractInstruction (rawinstr:FFI.Instruction) (ctx:ValueContext) : extract Instruction := do
-  let op ← (FFI.getInstructionOpcode rawinstr)
+  let op ← do
+    let nm ← FFI.getInstructionOpcodeName rawinstr
+    match Code.Instr.fromOpcodeName nm with
+    | none => throwError $ "unrecovnized LLVM instruction opcode name: " ++ nm
+    | some i => pure i
   let tp ← (FFI.getInstructionType rawinstr) >>= extractType
   match op with
   -- == terminators ==

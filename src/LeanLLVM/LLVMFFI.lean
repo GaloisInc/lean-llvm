@@ -152,8 +152,8 @@ def getInstructionName : @& Instruction -> IO (Option String) := arbitrary
 @[extern 2 "lean_llvm_getInstructionType"]
 def getInstructionType : @& Instruction -> IO Type_ := arbitrary
 
-@[extern 2 "lean_llvm_getInstructionOpcode"]
-def getInstructionOpcode : @& Instruction -> IO Code.Instr := arbitrary
+@[extern 2 "lean_llvm_getInstructionOpcodeName"]
+def getInstructionOpcodeName : @& Instruction -> IO String := arbitrary
 
 @[extern 2 "lean_llvm_getInstructionReturnValue"]
 def getInstructionReturnValue : @& Instruction -> IO (Option Value) := arbitrary
