@@ -218,7 +218,12 @@ obj_res allocInstructionObj(obj_res parent, llvm::Instruction* i) {
 
 static
 llvm::Instruction* toInstruction(b_obj_arg o) {
-  return llvm::dyn_cast<llvm::Instruction>(toValue(o));
+  auto pInstr = llvm::dyn_cast<llvm::Instruction>(toValue(o));
+  if(!pInstr) {
+    std::cerr << "dyn_cast to llvm::Instruction failed!" << std::endl;
+    exit(1);
+  }
+  return pInstr;
 }
 
 // llvm::BasicBlock is a subtype of llvm::Value, so we can use the same
@@ -648,10 +653,9 @@ obj_res lean_llvm_getInstructionType(b_obj_arg i_obj, obj_arg r) {
     return io_result_mk_ok(allocTypeObj(i->getType()));
 }
 
-obj_res lean_llvm_getInstructionOpcode(b_obj_arg i_obj, obj_arg r) {
+obj_res lean_llvm_getInstructionOpcodeName(b_obj_arg i_obj, obj_arg r) {
     auto i = toInstruction(i_obj);
-    unsigned int opcode = i->getOpcode();
-    return io_result_mk_ok( box( opcode ) );
+    return io_result_mk_ok( lean_mk_string(i->getOpcodeName()) );
 }
 
 obj_res lean_llvm_getInstructionReturnValue(b_obj_arg i_obj, obj_arg r) {

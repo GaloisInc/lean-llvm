@@ -1,5 +1,10 @@
+
+import Std.Data.RBMap
+
 namespace LLVM
 namespace Code
+
+open Std (RBMap)
 
 -- C.F. <llvm/IR/Type.h>, Type::TypeID
 inductive TypeID : Type
@@ -46,11 +51,9 @@ end TypeID
 -- | Instruction type tag
 --
 -- Note. Constructor names are generated from LLVM files and capitalized
--- according to names in files.
+-- according to names in files. C.F. llvm/IR/Instruction.def
 inductive Instr : Type
-| Unused -- Burn constructor number 0, which is not used for any instruction value
-
-
+-- Terminators
 | Ret
 | Br
 | Switch
@@ -61,15 +64,10 @@ inductive Instr : Type
 | CleanupRet
 | CatchRet
 | CatchSwitch
-
-
-
-
+| CallBr
+-- Standard unary operators
 | FNeg
-
-
-
-
+-- Standard binary operators
 | Add
 | FAdd
 | Sub
@@ -82,18 +80,14 @@ inductive Instr : Type
 | URem
 | SRem
 | FRem
-
-
+-- Logical operators
 | Shl
 | LShr
 | AShr
 | And
 | Or
 | Xor
-
-
-
-
+-- Memory instructions
 | Alloca
 | Load
 | Store
@@ -101,12 +95,7 @@ inductive Instr : Type
 | Fence
 | AtomicCmpXchg
 | AtomicRMW
-
-
-
-
-
-
+-- Convert instructions
 | Trunc
 | ZExt
 | SExt
@@ -120,15 +109,10 @@ inductive Instr : Type
 | IntToPtr
 | BitCast
 | AddrSpaceCast
-
-
-
+-- Pad instructions
 | CleanupPad
 | CatchPad
-
-
-
-
+-- Other instructions
 | ICmp
 | FCmp
 | PHI
@@ -143,12 +127,156 @@ inductive Instr : Type
 | ExtractValue
 | InsertValue
 | LandingPad
+| Freeze
+  deriving Repr
 
 namespace Instr
+
+/-- Names associated with Instr, C.F. llvm::Instruction::getOpcodeName in the C++ source.-/
+def opcodeName : Instr → String
+  | Ret => "ret"
+  | Br => "br"
+  | Switch => "switch"
+  | IndirectBr => "indirectbr"
+  | Invoke => "invoke"
+  | Resume => "resume"
+  | Unreachable => "unreachable"
+  | CleanupRet => "cleanupret"
+  | CatchRet => "catchret"
+  | CatchPad => "catchpad"
+  | CatchSwitch => "catchswitch"
+  | CallBr => "callbr"
+  | FNeg => "fneg"
+  | Add => "add"
+  | FAdd => "fadd"
+  | Sub => "sub"
+  | FSub => "fsub"
+  | Mul => "mul"
+  | FMul => "fmul"
+  | UDiv => "udiv"
+  | SDiv => "sdiv"
+  | FDiv => "fdiv"
+  | URem => "urem"
+  | SRem => "srem"
+  | FRem => "frem"
+  | And => "and"
+  | Or => "or"
+  | Xor => "xor"
+  | Alloca => "alloca"
+  | Load => "load"
+  | Store => "store"
+  | AtomicCmpXchg => "cmpxchg"
+  | AtomicRMW => "atomicrmw"
+  | Fence => "fence"
+  | GetElementPtr => "getelementptr"
+  | Trunc => "trunc"
+  | ZExt => "zext"
+  | SExt => "sext"
+  | FPTrunc => "fptrunc"
+  | FPExt => "fpext"
+  | FPToUI => "fptoui"
+  | FPToSI => "fptosi"
+  | UIToFP => "uitofp"
+  | SIToFP => "sitofp"
+  | IntToPtr => "inttoptr"
+  | PtrToInt => "ptrtoint"
+  | BitCast => "bitcast"
+  | AddrSpaceCast => "addrspacecast"
+  | ICmp => "icmp"
+  | FCmp => "fcmp"
+  | PHI => "phi"
+  | Select => "select"
+  | UserOp1 => "<Invalid operator>" -- May be used internally in a pass
+  | UserOp2 => "<Invalid operator>" -- Internal to passes only
+  | Call => "call"
+  | Shl => "shl"
+  | LShr => "lshr"
+  | AShr => "ashr"
+  | VAArg => "va_arg"
+  | ExtractElement => "extractelement"
+  | InsertElement => "insertelement"
+  | ShuffleVector => "shufflevector"
+  | ExtractValue => "extractvalue"
+  | InsertValue => "insertvalue"
+  | LandingPad => "landingpad"
+  | CleanupPad => "cleanuppad"
+  | Freeze => "freeze"
+
+private
+def opcadeNameMap : RBMap String Instr Ord.compare :=
+  RBMap.fromList
+    (cmp := Ord.compare)
+    [("ret", Ret),
+     ("br", Br),
+     ("switch", Switch),
+     ("indirectbr", IndirectBr),
+     ("invoke", Invoke),
+     ("resume", Resume),
+     ("unreachable", Unreachable),
+     ("cleanupret", CleanupRet),
+     ("catchret", CatchRet),
+     ("catchpad", CatchPad),
+     ("catchswitch", CatchSwitch),
+     ("callbr", CallBr),
+     ("fneg", FNeg),
+     ("add", Add),
+     ("fadd", FAdd),
+     ("sub", Sub),
+     ("fsub", FSub),
+     ("mul", Mul),
+     ("fmul", FMul),
+     ("udiv", UDiv),
+     ("sdiv", SDiv),
+     ("fdiv", FDiv),
+     ("urem", URem),
+     ("srem", SRem),
+     ("frem", FRem),
+     ("and", And),
+     ("or", Or),
+     ("xor", Xor),
+     ("alloca", Alloca),
+     ("load", Load),
+     ("store", Store),
+     ("cmpxchg", AtomicCmpXchg),
+     ("atomicrmw", AtomicRMW),
+     ("fence", Fence),
+     ("getelementptr", GetElementPtr),
+     ("trunc", Trunc),
+     ("zext", ZExt),
+     ("sext", SExt),
+     ("fptrunc", FPTrunc),
+     ("fpext", FPExt),
+     ("fptoui", FPToUI),
+     ("fptosi", FPToSI),
+     ("uitofp", UIToFP),
+     ("sitofp", SIToFP),
+     ("inttoptr", IntToPtr),
+     ("ptrtoint", PtrToInt),
+     ("bitcast", BitCast),
+     ("addrspacecast", AddrSpaceCast),
+     ("icmp", ICmp),
+     ("fcmp", FCmp),
+     ("phi", PHI),
+     ("select", Select),
+     ("call", Call),
+     ("shl", Shl),
+     ("lshr", LShr),
+     ("ashr", AShr),
+     ("va_arg", VAArg),
+     ("extractelement", ExtractElement),
+     ("insertelement", InsertElement),
+     ("shufflevector", ShuffleVector),
+     ("extractvalue", ExtractValue),
+     ("insertvalue", InsertValue),
+     ("landingpad", LandingPad),
+     ("cleanuppad", CleanupPad),
+     ("freeze", Freeze)]
+
+
+def fromOpcodeName (nm : String) : Option Instr :=
+  opcadeNameMap.find? nm
+
 def asString : Instr -> String
-| Unused => "Unused"
-
-
 | Ret => "Ret"
 | Br => "Br"
 | Switch => "Switch"
@@ -159,14 +287,9 @@ def asString : Instr -> String
 | CleanupRet => "CleanupRet"
 | CatchRet => "CatchRet"
 | CatchSwitch => "CatchSwitch"
-
-
-
+| CallBr => "CallBr"
 
 | FNeg => "FNeg"
-
-
-
 
 | Add => "Add"
 | FAdd => "FAdd"
@@ -181,16 +304,12 @@ def asString : Instr -> String
 | SRem => "SRem"
 | FRem => "FRem"
 
-
 | Shl => "Shl"
 | LShr => "LShr"
 | AShr => "AShr"
 | And => "And"
 | Or => "Or"
 | Xor => "Xor"
-
-
-
 
 | Alloca => "Alloca"
 | Load => "Load"
@@ -199,11 +318,6 @@ def asString : Instr -> String
 | Fence => "Fence"
 | AtomicCmpXchg => "AtomicCmpXchg"
 | AtomicRMW => "AtomicRMW"
-
-
-
-
-
 
 | Trunc => "Trunc"
 | ZExt => "ZExt"
@@ -241,6 +355,7 @@ def asString : Instr -> String
 | ExtractValue => "ExtractValue"
 | InsertValue => "InsertValue"
 | LandingPad => "LandingPad"
+| Freeze => "Freeze"
 
 end Instr
 
